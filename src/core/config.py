@@ -24,3 +24,8 @@ class Settings(BaseSettings):
         else:
             credentials = self.DB_USERNAME
         return credentials
+
+
+# TODO: Consider using get_settings with @lru_cache instead of initializing settings this way
+# More info: https://fastapi.tiangolo.com/advanced/settings/#the-main-app-file
+settings = Settings()

@@ -1,13 +1,8 @@
-import json
 from typing import Any
 
-from fastapi import FastAPI
 from pydantic import BaseModel
 
-from .config import settings
-
-
-app = FastAPI()
+from .core import app
 
 
 class TestModel(BaseModel):
@@ -18,6 +13,7 @@ class TestModel(BaseModel):
 
 @app.get("/")
 async def root() -> Any:  # Any just for testing
+    from .core import settings
     return [
         TestModel(name="test", description="non-default description"),
         TestModel(name="another one", some_number=1337),
