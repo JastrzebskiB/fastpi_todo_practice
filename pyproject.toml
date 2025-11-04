@@ -8,10 +8,13 @@ authors = [
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    # BE framework, utils etc.
     "fastapi[standard] (>=0.117.1,<0.118.0)",
     "pydantic-settings (>=2.11.0,<2.12)",
+    # ORM, db connections etc.
     "SQLAlchemy (>=2.0.44,<2.1)",
     "alembic (>=1.17.1,<1.18)",
+    "psycopg (>=3.2.12,<3.13)",
 ]
 
 [tool.poetry]
