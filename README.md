@@ -22,3 +22,10 @@ alembic upgrade head
 ```
 fastapi dev src/main.py
 ```
+
+### Prod
+
+### Testing
+```
+pytest tests/
+```
