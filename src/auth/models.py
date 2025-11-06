@@ -1,13 +1,15 @@
 import uuid
+from datetime import datetime
 from typing import Optional, List
 
 from sqlalchemy import ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import func
 
-from ..core.db import Base
+from ..core.db import Base, CommonFieldsMixin
 
 
-class Organization(Base):
+class Organization(Base, CommonFieldsMixin):
     __tablename__ = "organization"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
@@ -30,11 +32,13 @@ class Organization(Base):
     )
 
 
-class User(Base):
+class User(Base, CommonFieldsMixin):
     __tablename__ = "user"
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(unique=True, nullable=False)
+    username: Mapped[str] = mapped_column(unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(nullable=False)
 
     # one-to-one relationship
     # relationship foreign_keys arg: "ClassName.field_name" (field exists in related table)
@@ -54,3 +58,6 @@ class User(Base):
         foreign_keys=[organization_id],
         back_populates="members",
     )
+
+    def __repr__(self):
+        return f"<src.auth.models.User: {self.username}>"

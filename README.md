@@ -11,7 +11,7 @@ poetry install
 
 ```
 cp .env.example .env  # Make changes as necessary
-psql -U postgres < scripts/create_db.sql
+psql -U postgres < scripts/setup_db.sql  # drops existing fastapi_todo_dev db
 alembic upgrade head
 ```
 

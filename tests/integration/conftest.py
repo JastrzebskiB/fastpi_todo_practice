@@ -2,13 +2,14 @@ from pytest import fixture
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session, sessionmaker
 
 
 TEST_DB_NAME = "fastapi_todo_test"
 
 
 @fixture(scope="module")
-def test_db(db_name=TEST_DB_NAME):
+def test_db(db_name=TEST_DB_NAME) -> str:
     from src.core.config import settings    
 
     # isolation_level needs to be specified to create a db
@@ -39,3 +40,13 @@ def create_test_db(db_name: str, connection: Connection) -> None:
 
 def drop_test_db(db_name: str, connection: Connection) -> None:
     connection.execute(text(f"DROP DATABASE {db_name}"))
+
+
+@fixture(scope="function")
+def TestSession(test_db: str) -> Session:
+    engine = create_engine(test_db)
+    Session = sessionmaker(engine)
+
+    yield Session
+
+    # No teardown required

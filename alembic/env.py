@@ -32,7 +32,6 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    print("going offline", flush=True)
     url = settings.db_conn_url
     context.configure(
         url=url,
@@ -52,11 +51,9 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    print("going online", flush=True)
+    engine = create_engine(settings.db_conn_url, poolclass=pool.NullPool)
 
-    connectable = create_engine(settings.db_conn_url, poolclass=pool.NullPool)
-
-    with connectable.connect() as connection:
+    with engine.connect() as connection:
         context.configure(
             connection=connection, target_metadata=target_metadata
         )

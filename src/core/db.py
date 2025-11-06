@@ -1,11 +1,22 @@
+from datetime import datetime
+
 from sqlalchemy import create_engine
-from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
+from sqlalchemy.sql import func
 
 from .config import settings
 
 
 class Base(DeclarativeBase):
     ...
+
+
+class CommonFieldsMixin:
+    created_at: Mapped[datetime] = mapped_column(server_default=func.CURRENT_TIMESTAMP())
+    updated_at: Mapped[datetime] = mapped_column(
+        server_default=func.CURRENT_TIMESTAMP(), 
+        onupdate=func.CURRENT_TIMESTAMP(),
+    )
 
 
 engine = create_engine(settings.db_conn_url)
