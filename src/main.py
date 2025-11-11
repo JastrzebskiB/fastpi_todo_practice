@@ -3,6 +3,9 @@ from typing import Any
 from pydantic import BaseModel
 
 from .core import app
+from .auth.views import router as auth_router
+
+app.include_router(auth_router)
 
 
 class TestModel(BaseModel):

@@ -27,5 +27,5 @@ fastapi dev src/main.py
 
 ### Testing
 ```
-pytest tests/
+pytest tests/ -s
 ```
