@@ -84,7 +84,9 @@ def TestSession(test_db: str) -> sessionmaker:
 
 @fixture(scope="function")
 def TestUserRepository(TestSession) -> UserRepository:
-    return UserRepository(TestSession)
+    yield UserRepository(TestSession)
+
+    truncate_user_table(TestSession)
 
 
 # TODO: Consider using partials here?
@@ -111,6 +113,13 @@ def create_test_user(
     return user
 
 
+# NOT a fixture, just a helper
+def truncate_user_table(sessionmaker):
+    with sessionmaker() as session:
+        session.execute(text("TRUNCATE TABLE public.user RESTART IDENTITY CASCADE"))
+        session.commit()
+
+
 @fixture(scope="function")
 def test_user(
     TestSession: sessionmaker,
@@ -120,11 +129,16 @@ def test_user(
     organization: Organization | None = None,
     owned_organization: Organization | None = None
 ) -> User:
-    yield create_test_user(TestSession, username, email, organization, owned_organization)
+    yield create_test_user(
+        TestSession, 
+        username, 
+        email, 
+        password_hash, 
+        organization, 
+        owned_organization,
+    )
 
-    with TestSession() as session:
-        session.execute(text("TRUNCATE TABLE public.user RESTART IDENTITY CASCADE"))
-        session.commit()
+    # Note: cleanup only happens in TestUserRepository
 
 
 @fixture(scope="function")
@@ -143,6 +157,4 @@ def test_users(
         ) for data in user_data_all
     ]
 
-    with TestSession() as session:
-        session.execute(text("TRUNCATE TABLE public.user RESTART IDENTITY CASCADE"))
-        session.commit()
+    # Note: cleanup only happens in TestUserRepository

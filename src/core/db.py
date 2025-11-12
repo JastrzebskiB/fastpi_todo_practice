@@ -52,20 +52,8 @@ class BaseRepository:
             except Exception as e:  # Intentional catch-all - we want a rollback for ALL exceptions
                 session.rollback()
                 raise e
-            return orm_model_instance
+        return orm_model_instance
 
     def get_all(self) -> list[Base]:
         with self.sessionmaker() as session:
             return session.query(self.model).all()
-
-    def filter_by_first(self, filters: tuple) -> Base | None:
-        # filters are in the format (Model.field == "value", Model.field >= 5, ...) etc.
-        # https://stackoverflow.com/a/29889594
-        with self.sessionmaker() as session:
-            return session.query(self.model).filter(*filters).first()
-        
-    def filter_by_all(self, filters: tuple) -> list[Base] | None:
-        # filters are in the format (Model.field == "value", Model.field >= 5, ...) etc.
-        # https://stackoverflow.com/a/29889594
-        with self.sessionmaker() as session:
-            return session.query(self.model).filter(*filters).all()
