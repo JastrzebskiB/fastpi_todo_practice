@@ -1,6 +1,5 @@
 from datetime import datetime
 
-from pydantic import BaseModel
 from sqlalchemy import create_engine
 from sqlalchemy.orm import (
     DeclarativeBase, 
@@ -41,18 +40,17 @@ class BaseRepository:
             )
         self.sessionmaker = sessionmaker
 
-    def create(self, model_data: BaseModel) -> Base:
+    def create(self, model_instance: Base) -> Base:
         # Assumes data from model_data has already been validated
-        orm_model_instance = self.model(**model_data.model_dump())
         with self.sessionmaker() as session:
             try:
-                session.add(orm_model_instance)
+                session.add(model_instance)
                 session.commit()
-                session.refresh(orm_model_instance)
+                session.refresh(model_instance)
             except Exception as e:  # Intentional catch-all - we want a rollback for ALL exceptions
                 session.rollback()
                 raise e
-        return orm_model_instance
+        return model_instance
 
     def get_all(self) -> list[Base]:
         with self.sessionmaker() as session:

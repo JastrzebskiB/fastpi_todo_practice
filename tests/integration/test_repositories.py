@@ -15,15 +15,16 @@ class TestCreateUserRepository:
         users = TestUserRepository.get_all()
         assert not users
     
-        payload = CreateUserPayload(
+        user = User(
             email="test@test.com",
             username="test",
             password_hash="hashed_password",  # Will be hashed in create_user_service
         )
-        user = TestUserRepository.create(payload)
+        user = TestUserRepository.create(user)
     
         users = TestUserRepository.get_all()
         assert len(users) == 1
+        assert user.id is not None
     
     def test_check_username_unique(self, TestUserRepository, test_user):
         username_unique = "test"

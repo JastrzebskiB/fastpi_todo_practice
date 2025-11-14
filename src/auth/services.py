@@ -2,26 +2,37 @@ from hashlib import sha256
 
 from fastapi import Depends
 
-from .dto import CreateUserPayload
-from .models import User
-from .repositories import UserRepository, get_user_repository
+from .dto import CreateUserPayload, UserResponse
+from .models import Organization, User
+from .repositories import (
+    OrganizationRepository,
+    UserRepository, 
+    get_organization_repository,   
+    get_user_repository,
+)
 from ..core import Session, settings
 
 
 class CreateUserService:
     def __init__(
         self, 
-        repository: UserRepository = Depends(get_user_repository)
+        repository: UserRepository = Depends(get_user_repository),
     ) -> None:
         self.repository = repository
 
     def create_user(self, payload: CreateUserPayload) -> User:
         self.hash_password(payload)
         self.validate_unique_user_fields(payload)
-        return self.repository.create(payload)
+        user = User(
+            email=payload.email,
+            username=payload.username,
+            password_hash=self.hash_password(payload)
+        )
+        user = self.repository.create(user)
+        return UserResponse(id=user.id, email=user.email, username=user.username)
 
-    def hash_password(self, payload: CreateUserPayload) -> None:
-        payload.password_hash = sha256(payload.password_hash.encode()).hexdigest()
+    def hash_password(self, payload: CreateUserPayload) -> str:
+        return sha256(payload.password.encode()).hexdigest()
 
     def validate_unique_user_fields(self, payload: CreateUserPayload) -> None:
         duplicate_fields = []
@@ -42,3 +53,15 @@ class CreateUserService:
 
 def get_create_user_service():
     return CreateUserService
+
+
+class CreateOrganizationService:
+    def __init__(
+        self,
+        repository: OrganizationRepository = Depends(get_organization_repository),
+    ) -> None:
+        self.repository = repository
+
+
+def get_create_organization_service():
+    return CreateOrganizationService

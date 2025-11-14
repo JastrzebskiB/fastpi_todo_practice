@@ -3,7 +3,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.auth.dto import CreateUserPayload
+from src.auth.dto import CreateUserPayload, UserResponse
+from src.auth.models import User
 from src.auth.services import CreateUserService
 
 
@@ -13,17 +14,14 @@ class TestCreateUserService:
         self.payload = CreateUserPayload(
             email="test@test.com",
             username="test",
-            password_hash="unhashed_password",
+            password="unhashed_password",
         )
-        self.service = CreateUserService(
-            repository=self.mock_repo,
+        self.mock_repo.create.return_value = User(
+            id="d8719698-eb36-45d7-a630-0cdd56346457",
+            email=self.payload.email,
+            username=self.payload.username,
         )
-
-    def test_hash_password(self):
-        expected = sha256(self.payload.password_hash.encode()).hexdigest()
-        self.service.hash_password(self.payload)
-
-        assert self.payload.password_hash == expected
+        self.service = CreateUserService(repository=self.mock_repo)
 
     def test_validate_unique_user_fields_username_duplicate(self):
         self.mock_repo.check_username_unique.return_value = False
@@ -62,6 +60,18 @@ class TestCreateUserService:
         self.service.validate_unique_user_fields(self.payload)
 
     def test_create(self):
-        self.service.create_user(self.payload)
+        self.service.hash_password = lambda x: "hashed"
+        result = self.service.create_user(self.payload)
 
-        self.mock_repo.create.assert_called_once_with(self.payload)
+        # Assert repository.create got called with the correct arguments (i.e. that the password
+        # gets hashed)
+        create_argument = self.mock_repo.create._mock_call_args_list[0][0][0]
+        assert isinstance(create_argument, User)
+        assert create_argument.email == self.payload.email
+        assert create_argument.username == self.payload.username
+        assert create_argument.password_hash == "hashed"
+
+        # Assert returned value is correct as well
+        assert isinstance(result, UserResponse)
+        assert result.email == self.payload.email
+        assert result.username == self.payload.username

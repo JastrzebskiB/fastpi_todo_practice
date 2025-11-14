@@ -1,7 +1,7 @@
 from sqlalchemy.sql import exists
 
 from ..core import BaseRepository, Session
-from .models import User
+from .models import Organization, User
 
 
 class UserRepository(BaseRepository):
@@ -22,3 +22,14 @@ class UserRepository(BaseRepository):
 
 def get_user_repository() -> UserRepository:
     return UserRepository()
+
+
+class OrganizationRepository(BaseRepository):
+    model = Organization
+
+    # add user to organization?
+    # request access to organization?
+
+
+def get_organization_repository() -> OrganizationRepository:
+    return OrganizationRepository
