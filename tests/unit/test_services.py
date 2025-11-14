@@ -5,10 +5,10 @@ import pytest
 
 from src.auth.dto import CreateUserPayload, UserResponse
 from src.auth.models import Organization, User
-from src.auth.services import CreateUserService
+from src.auth.services import UserService
 
 
-class TestCreateUserService:
+class TestUserService:
     def setup_method(self):
         self.mock_repo = MagicMock()
         self.payload = CreateUserPayload(
@@ -21,7 +21,7 @@ class TestCreateUserService:
             email=self.payload.email,
             username=self.payload.username,
         )
-        self.service = CreateUserService(repository=self.mock_repo)
+        self.service = UserService(repository=self.mock_repo)
 
     def test_validate_unique_user_fields_username_duplicate(self):
         self.mock_repo.check_username_unique.return_value = False

@@ -13,7 +13,7 @@ from .repositories import (
 from ..core import Session, settings
 
 
-class CreateUserService:
+class UserService:
     def __init__(
         self, 
         repository: UserRepository = Depends(get_user_repository),
@@ -74,11 +74,11 @@ class CreateUserService:
         return sha256(payload.password.encode()).hexdigest()
 
 
-def get_create_user_service():
-    return CreateUserService
+def get_user_service():
+    return UserService
 
 
-class CreateOrganizationService:
+class OrganizationService:
     def __init__(
         self,
         repository: OrganizationRepository = Depends(get_organization_repository),
@@ -86,5 +86,5 @@ class CreateOrganizationService:
         self.repository = repository
 
 
-def get_create_organization_service():
-    return CreateOrganizationService
+def get_organization_service():
+    return OrganizationService

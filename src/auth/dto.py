@@ -7,6 +7,7 @@ class CreateUserPayload(BaseModel):
     email: EmailStr
     username: str
     password: str
+    
     organization_id: UUID4 | None = None
 
 
@@ -22,7 +23,8 @@ class UserResponse(BaseModel):
 class CreateOrganizationPayload(BaseModel):
     name: str
     owner: UserResponse
-    members: list[UserResponse]     
+
+    member_ids: list[UUID4]
 
 
 class OrganizationResponseFlat(BaseModel):

@@ -5,11 +5,11 @@ from fastapi.testclient import TestClient
 
 from src.auth.dto import CreateUserPayload
 from src.auth.models import User
-from src.auth.views import get_create_user_service
+from src.auth.views import get_user_service
 from src.main import app
 
 
-def get_create_user_service_mock():
+def get_user_service_mock():
     def create_user_method_mock(payload: CreateUserPayload):
         return User(
             id="d8719698-eb36-45d7-a630-0cdd56346457",
@@ -23,7 +23,7 @@ def get_create_user_service_mock():
     return create_user_service_mock
 
 
-app.dependency_overrides[get_create_user_service] = get_create_user_service_mock
+app.dependency_overrides[get_user_service] = get_user_service_mock
 
 
 def test_user_create():
