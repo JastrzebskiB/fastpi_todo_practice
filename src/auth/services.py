@@ -2,7 +2,7 @@ from hashlib import sha256
 
 from fastapi import Depends
 
-from .dto import CreateUserPayload, UserResponse
+from .dto import CreateUserPayload, OrganizationResponseFlat, UserResponse
 from .models import Organization, User
 from .repositories import (
     OrganizationRepository,
@@ -20,19 +20,39 @@ class CreateUserService:
     ) -> None:
         self.repository = repository
 
-    def create_user(self, payload: CreateUserPayload) -> User:
-        self.hash_password(payload)
+    def create_user(self, payload: CreateUserPayload) -> UserResponse:
         self.validate_unique_user_fields(payload)
-        user = User(
+        user = self.create_domain_user_instance(payload)
+        user = self.repository.create(user, attribute_names=["relationship"])
+        return self.create_user_response(user)
+
+    def create_domain_user_instance(self, payload: CreateUserPayload) -> User:
+        return User(
             email=payload.email,
             username=payload.username,
-            password_hash=self.hash_password(payload)
+            password_hash=self.hash_password(payload),
+            organization_id=payload.organization_id,
         )
-        user = self.repository.create(user)
-        return UserResponse(id=user.id, email=user.email, username=user.username)
 
-    def hash_password(self, payload: CreateUserPayload) -> str:
-        return sha256(payload.password.encode()).hexdigest()
+    def create_organization_response(self, organization: Organization) -> OrganizationResponseFlat:
+        return OrganizationResponseFlat(id=organization.id, name=organization.name)
+
+    def create_user_response(self, user: User) -> UserResponse:
+        owned_organization = (
+            self.create_organization_response(user.owned_organization)
+            if user.owned_organization else None
+        )
+        organization = (
+            self.create_organization_response(user.organization) 
+            if user.organization_id else None
+        )
+        return UserResponse(
+            id=user.id, 
+            email=user.email, 
+            username=user.username,
+            owned_organization=owned_organization,
+            organization=organization,
+        )
 
     def validate_unique_user_fields(self, payload: CreateUserPayload) -> None:
         duplicate_fields = []
@@ -49,6 +69,9 @@ class CreateUserService:
             raise ValueError(
                 f"The following {field} {contain} non-unique values: {duplicate_fields}"
             )
+
+    def hash_password(self, payload: CreateUserPayload) -> str:
+        return sha256(payload.password.encode()).hexdigest()
 
 
 def get_create_user_service():

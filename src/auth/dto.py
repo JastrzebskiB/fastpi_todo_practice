@@ -1,3 +1,5 @@
+from typing import Optional
+
 from pydantic import BaseModel, EmailStr, UUID4
 
 
@@ -5,8 +7,7 @@ class CreateUserPayload(BaseModel):
     email: EmailStr
     username: str
     password: str
-
-    # organization_id?
+    organization_id: UUID4 | None = None
 
 
 class UserResponse(BaseModel):
@@ -14,10 +15,20 @@ class UserResponse(BaseModel):
     email: EmailStr
     username: str
 
-    # Will be added once I have DTOs for those
-    # owned_organization
-    # organization
+    owned_organization: Optional["OrganizationResponseFlat"]
+    organization: Optional["OrganizationResponseFlat"]
 
 
 class CreateOrganizationPayload(BaseModel):
+    name: str
+    owner: UserResponse
+    members: list[UserResponse]     
+
+
+class OrganizationResponseFlat(BaseModel):
+    id: UUID4
+    name: str
+
+
+class OrganizationResponse(BaseModel):
     ...

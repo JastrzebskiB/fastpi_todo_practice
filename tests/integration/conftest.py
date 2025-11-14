@@ -72,6 +72,18 @@ def run_migrations(db_name: str) -> None:
     command.upgrade(alembic_config, "head")
 
 
+def truncate_user_table(sessionmaker):
+    with sessionmaker() as session:
+        session.execute(text("TRUNCATE TABLE public.user RESTART IDENTITY CASCADE"))
+        session.commit()
+
+
+def truncate_organization_table(sessionmaker):
+    with sessionmaker() as session:
+        session.execute(text("TRUNCATE TABLE organization RESTART IDENTITY CASCADE"))
+        session.commit()
+
+
 # TODO: Consider changing name to TestSessionmaker?
 @fixture(scope="function")
 def TestSession(test_db: str) -> sessionmaker:
@@ -87,6 +99,7 @@ def TestUserRepository(TestSession) -> UserRepository:
     yield UserRepository(TestSession)
 
     truncate_user_table(TestSession)
+    truncate_organization_table(TestSession)
 
 
 # TODO: Consider using partials here?
@@ -111,13 +124,6 @@ def create_test_user(
         session.refresh(user)
 
     return user
-
-
-# NOT a fixture, just a helper
-def truncate_user_table(sessionmaker):
-    with sessionmaker() as session:
-        session.execute(text("TRUNCATE TABLE public.user RESTART IDENTITY CASCADE"))
-        session.commit()
 
 
 @fixture(scope="function")
@@ -156,5 +162,34 @@ def test_users(
             TestSession, data[0], data[1], data[2], data[3], data[4]
         ) for data in user_data_all
     ]
+
+    # Note: cleanup only happens in TestUserRepository
+
+
+# TODO: Consider using partials here?
+def create_test_organization(
+    TestSession: sessionmaker, 
+    name: str, 
+    owner_id: str | None = None,
+) -> Organization:
+    if not owner_id:
+        owner = User(username="owner", email="owner@test.com", password_hash="not_a_hash")
+    organization = Organization(name="test_org", owner=owner, members=[owner])
+    with TestSession() as session:
+        session.add(owner)
+        session.add(organization)
+        session.commit()
+        session.refresh(organization)
+
+    return organization
+
+
+@fixture(scope="function")
+def test_organization(
+    TestSession: sessionmaker, 
+    name: str = "test_org", 
+    owner_id: str | None = None,
+):
+    yield create_test_organization(TestSession, name)
 
     # Note: cleanup only happens in TestUserRepository

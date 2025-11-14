@@ -40,13 +40,13 @@ class BaseRepository:
             )
         self.sessionmaker = sessionmaker
 
-    def create(self, model_instance: Base) -> Base:
+    def create(self, model_instance: Base, attribute_names: list[str] | None = None) -> Base:
         # Assumes data from model_data has already been validated
         with self.sessionmaker() as session:
             try:
                 session.add(model_instance)
                 session.commit()
-                session.refresh(model_instance)
+                session.refresh(model_instance, attribute_names=attribute_names)
             except Exception as e:  # Intentional catch-all - we want a rollback for ALL exceptions
                 session.rollback()
                 raise e
@@ -55,3 +55,7 @@ class BaseRepository:
     def get_all(self) -> list[Base]:
         with self.sessionmaker() as session:
             return session.query(self.model).all()
+
+    def get_count(self) -> int:
+        with self.sessionmaker() as session:
+            return session.query(self.model).count()
