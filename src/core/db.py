@@ -7,7 +7,7 @@ from sqlalchemy.orm import (
     mapped_column, 
     sessionmaker,
 )
-from sqlalchemy.sql import func
+from sqlalchemy.sql import exists, func
 
 from .config import settings
 
@@ -52,6 +52,14 @@ class BaseRepository:
                 raise e
         return model_instance
 
+    # TODO: needs test
+    def exists_with_id(
+        self, 
+        id: str,  # UUID4
+    ) -> bool:
+        with self.sessionmaker() as session:
+            session.scalar(exists().where(self.model.id == id).select())
+
     def get_all(self) -> list[Base]:
         with self.sessionmaker() as session:
             return session.query(self.model).all()
@@ -59,3 +67,19 @@ class BaseRepository:
     def get_count(self) -> int:
         with self.sessionmaker() as session:
             return session.query(self.model).count()
+
+    # TODO: needs test
+    def get_by_id(
+        self, 
+        id: str,  # UUID4
+    ) -> Base:
+        with self.sessionmaker() as session:
+            return session.query(self.model).get(id)
+
+    # TODO: needs test
+    def get_all_by_id(
+        self, 
+        ids: list[str],  # list[UUID4]
+    ) -> list[Base]:
+        with self.sessionmaker() as session:
+            return session.query(self.model).filter(self.model.id.in_(ids)).all()

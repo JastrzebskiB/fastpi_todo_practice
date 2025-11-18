@@ -6,7 +6,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
 from src.auth.models import Organization, User
-from src.auth.repositories import UserRepository
+from src.auth.repositories import OrganizationRepository, UserRepository
 
 
 TEST_DB_NAME = "fastapi_todo_test"
@@ -95,8 +95,16 @@ def TestSession(test_db: str) -> sessionmaker:
 
 
 @fixture(scope="function")
-def TestUserRepository(TestSession) -> UserRepository:
+def test_user_repository(TestSession) -> UserRepository:
     yield UserRepository(TestSession)
+
+    truncate_user_table(TestSession)
+    truncate_organization_table(TestSession)
+
+
+@fixture(scope="function")
+def test_organization_repository(TestSession) -> OrganizationRepository:
+    yield OrganizationRepository(TestSession)
 
     truncate_user_table(TestSession)
     truncate_organization_table(TestSession)
@@ -144,7 +152,7 @@ def test_user(
         owned_organization,
     )
 
-    # Note: cleanup only happens in TestUserRepository
+    # Note: cleanup only happens in test_user_repository
 
 
 @fixture(scope="function")
@@ -163,7 +171,7 @@ def test_users(
         ) for data in user_data_all
     ]
 
-    # Note: cleanup only happens in TestUserRepository
+    # Note: cleanup only happens in test_user_repository
 
 
 # TODO: Consider using partials here?
@@ -192,4 +200,4 @@ def test_organization(
 ):
     yield create_test_organization(TestSession, name)
 
-    # Note: cleanup only happens in TestUserRepository
+    # Note: cleanup only happens in test_user_repository

@@ -20,10 +20,16 @@ class UserResponse(BaseModel):
     organization: Optional["OrganizationResponseFlat"]
 
 
+class UserResponseFlat(BaseModel):
+    id: UUID4
+    email: EmailStr
+    username: str
+
+
 class CreateOrganizationPayload(BaseModel):
     name: str
-    owner: UserResponse
 
+    owner_id: UUID4  
     member_ids: list[UUID4]
 
 
@@ -33,4 +39,8 @@ class OrganizationResponseFlat(BaseModel):
 
 
 class OrganizationResponse(BaseModel):
-    ...
+    id: UUID4
+    name: str
+
+    owner: UserResponseFlat
+    members: list[UserResponseFlat]
