@@ -7,6 +7,7 @@ from sqlalchemy.orm import sessionmaker
 
 from src.auth.models import Organization, User
 from src.auth.repositories import OrganizationRepository, UserRepository
+from src.auth.services import OrganizationService, UserService
 
 
 TEST_DB_NAME = "fastapi_todo_test"
@@ -108,6 +109,20 @@ def test_organization_repository(TestSession) -> OrganizationRepository:
 
     truncate_user_table(TestSession)
     truncate_organization_table(TestSession)
+
+
+@fixture(scope="function")
+def test_user_service(test_user_repository) -> UserService:
+    yield UserService(repository=test_user_repository)
+
+    # Cleanup done in test_user_repository
+
+
+@fixture(scope="function")
+def test_organization_service(test_organization_repository) -> OrganizationService:
+    yield OrganizationService(repository=test_organization_repository)
+
+    # Cleanup done in test_organization_repository
 
 
 # TODO: Consider using partials here?

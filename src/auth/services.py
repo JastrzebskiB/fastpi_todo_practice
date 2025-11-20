@@ -39,7 +39,7 @@ class UserService:
         # what the fuuuuuuuuck? Shouldn't this be "owned organization/organization"?
         # are my tests that fucking useless?
         # or does clean architecture virtually require e2e tests?
-        user = self.repository.create(user, attribute_names=["relationship"])
+        user = self.repository.create(user, attribute_names=["owned_organization", "organization"])
         return self.create_user_response(user, organization_service)
 
     def validate_unique_user_fields(self, payload: CreateUserPayload) -> None:
@@ -76,7 +76,6 @@ class UserService:
         user: User, 
         organization_service: "OrganizationService"
     ) -> UserResponse:
-        # breakpoint()
         owned_organization = (
             organization_service.create_organization_response_flat(user.owned_organization)
             if user.owned_organization else None
@@ -112,7 +111,7 @@ class OrganizationService:
     ) -> OrganizationResponse:
         self.validate_unique_organization_fields(payload)
         organization = self.create_domain_organization_instance(payload)
-        organization = self.repository.create(organization, attribute_names=["relationship"])
+        organization = self.repository.create(organization)
         owner, members = self.add_users_to_organization(organization.id, payload, user_service)
 
         return self.create_organization_response(organization, owner, members)
@@ -133,13 +132,12 @@ class OrganizationService:
         payload: CreateOrganizationPayload, 
         user_service: UserService,
     ) -> tuple[UserResponseFlat, list[UserResponseFlat]]:
-        # TODO: not sure if this is necessary?
         if not self.repository.exists_with_id(organization_id):
             raise ValueError(f"Organization with id {organization_id} doesn't exist.")
         
         member_ids = [payload.owner_id, *payload.member_ids]
         members = user_service.repository.add_users_to_organization(organization_id, member_ids)
-        owner, members = members[0], members[1:]
+        owner = members[0]
 
         return (
             user_service.create_user_response_flat(owner),

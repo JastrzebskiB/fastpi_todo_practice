@@ -10,6 +10,7 @@ from src.auth.dto import (
     UserResponseFlat,
     OrganizationResponse,
 )
+from src.auth.services import UserService
 from src.auth.views import get_organization_service, get_user_service
 from src.main import app
 
@@ -30,7 +31,10 @@ def get_user_service_mock():
 
 
 def get_organization_service_mock():
-    def create_organization_method_mock(payload: CreateOrganizationPayload):
+    def create_organization_method_mock(
+        payload: CreateOrganizationPayload, 
+        user_service: UserService
+    ):
         return OrganizationResponse(
             id="72cfe120-6d39-4f8b-8c29-609b690361ef",
             name="test_org",
@@ -58,13 +62,10 @@ def get_organization_service_mock():
     return organization_service_mock
 
 
-app.dependency_overrides[get_user_service] = get_user_service_mock
-app.dependency_overrides[get_organization_service] = get_organization_service_mock
-
-
 def test_user_create():
+    app.dependency_overrides[get_user_service] = get_user_service_mock
+
     client = TestClient(app)
-    service = MagicMock(app)
     payload = {"email": "test@test.com", "username": "test", "password": "not_hashed"}
 
     response = client.post("/auth/users", json=payload)
@@ -76,8 +77,9 @@ def test_user_create():
 
 
 def test_organization_create():
+    app.dependency_overrides[get_organization_service] = get_organization_service_mock
+
     client = TestClient(app)
-    service = MagicMock(app)
     payload = {
         "name": "test_org",
         "owner_id": "d8719698-eb36-45d7-a630-0cdd56346457",

@@ -58,8 +58,9 @@ class BaseRepository:
         id: str,  # UUID4
     ) -> bool:
         with self.sessionmaker() as session:
-            session.scalar(exists().where(self.model.id == id).select())
+            return session.scalar(exists().where(self.model.id == id).select())
 
+    # TODO: How to typehint joins?
     def get_all(self) -> list[Base]:
         with self.sessionmaker() as session:
             return session.query(self.model).all()
@@ -72,9 +73,13 @@ class BaseRepository:
     def get_by_id(
         self, 
         id: str,  # UUID4
+        attribute_names: list[str] | None = None
     ) -> Base:
         with self.sessionmaker() as session:
-            return session.query(self.model).get(id)
+            model_instance = session.query(self.model).get(id)
+            if attribute_names:
+                session.refresh(model_instance, attribute_names)
+            return model_instance
 
     # TODO: needs test
     def get_all_by_id(

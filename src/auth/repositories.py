@@ -42,7 +42,6 @@ class OrganizationRepository(BaseRepository):
             return not session.scalar(exists().where(self.model.name == name).select())
 
     # which repo to put this in?
-    # add user to organization?
     # request access to organization?
 
 

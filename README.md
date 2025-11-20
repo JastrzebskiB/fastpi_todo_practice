@@ -26,6 +26,7 @@ fastapi dev src/main.py
 ### Prod
 
 ### Testing
+
 ```
-pytest tests/ -s
+pytest
 ```

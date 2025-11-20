@@ -23,6 +23,7 @@ async def user_create(
 @router.post("/organizations", tags=["organizations"])
 async def organization_create(
     payload: CreateOrganizationPayload,
-    organization_service: OrganizationService = Depends(get_organization_service),
+    service: OrganizationService = Depends(get_organization_service),
+    user_service: UserService = Depends(get_user_service)
 ):
-    return organization_service.create_organization(payload)
+    return service.create_organization(payload, user_service)

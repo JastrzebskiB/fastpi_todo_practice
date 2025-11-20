@@ -210,7 +210,12 @@ class TestOrganizationService:
                 id="d8719698-eb36-45d7-a630-0cdd56346457",
                 username="owner",
                 email="owner@test.com",
-            ),
+            ),  # owner as owner
+            UserResponseFlat(
+                id="d8719698-eb36-45d7-a630-0cdd56346457",
+                username="owner",
+                email="owner@test.com",
+            ),  # owner as first member
             UserResponseFlat(
                 id="e9819698-eb36-45d7-a630-0cdd56346457",
                 username="test_1",
@@ -220,10 +225,9 @@ class TestOrganizationService:
                 id="f0919698-eb36-45d7-a630-0cdd56346457",
                 username="test_2",
                 email="test_2@test.com",
-            ),
+            )
         ] 
         user_service_mock.repository = user_repository_mock
-
 
         result = self.service.add_users_to_organization(
             organization_id=self.organization.id,
@@ -236,8 +240,10 @@ class TestOrganizationService:
         assert result[0].username == "owner"
         assert isinstance(result[1][0], UserResponseFlat)
         assert isinstance(result[1][1], UserResponseFlat)
-        assert result[1][0].username == "test_1"
-        assert result[1][1].username == "test_2"
+        assert isinstance(result[1][2], UserResponseFlat)
+        assert result[1][0].username == "owner"
+        assert result[1][1].username == "test_1"
+        assert result[1][2].username == "test_2"
 
     def test_create_organization_response(self):
         owner = UserResponseFlat(
