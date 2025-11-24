@@ -16,8 +16,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 async def user_create(
     payload: CreateUserPayload, 
     service: UserService = Depends(get_user_service),
+    organization_service: OrganizationService = Depends(get_organization_service),
 ):
-    return service.create_user(payload)
+    return service.create_user(payload, organization_service)
 
 
 @router.post("/organizations", tags=["organizations"])
@@ -27,3 +28,11 @@ async def organization_create(
     user_service: UserService = Depends(get_user_service)
 ):
     return service.create_organization(payload, user_service)
+
+
+@router.get("/organizations", tags=["organizations"])
+async def organization_list(
+    service: OrganizationService = Depends(get_organization_service),
+    user_service: UserService = Depends(get_user_service)
+):
+    return service.get_all(user_service)

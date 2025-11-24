@@ -10,13 +10,16 @@ from src.auth.dto import (
     UserResponseFlat,
     OrganizationResponse,
 )
-from src.auth.services import UserService
+from src.auth.services import OrganizationService, UserService
 from src.auth.views import get_organization_service, get_user_service
 from src.main import app
 
 
 def get_user_service_mock():
-    def create_user_method_mock(payload: CreateUserPayload):
+    def create_user_method_mock(
+        payload: CreateUserPayload, 
+        organzation_service: OrganizationService
+    ):
         return UserResponse(
             id="d8719698-eb36-45d7-a630-0cdd56346457",
             email=payload.email,

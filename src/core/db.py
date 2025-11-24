@@ -1,16 +1,26 @@
 from datetime import datetime
+from typing import Union
+from uuid import UUID
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import (
     DeclarativeBase, 
-    Mapped, 
-    mapped_column, 
+    Mapped,
+    Query,
+    Relationship,
+    joinedload,
+    lazyload,
+    mapped_column,
+    selectinload, 
     sessionmaker,
+    subqueryload,
 )
 from sqlalchemy.sql import exists, func
 
 from .config import settings
 
+# Type hint alias
+LoadStrategy = Union[joinedload, lazyload, subqueryload, selectinload, Relationship]
 
 engine = create_engine(settings.db_conn_url)
 # TODO: Consider expire_on_commit=False? https://docs.sqlalchemy.org/en/20/errors.html#error-bhk3
@@ -22,6 +32,7 @@ class Base(DeclarativeBase):
     ...
 
 
+# TODO: Should I return those in some DTOs? Well, for now let's just keep them for "internal use"
 class CommonFieldsMixin:
     created_at: Mapped[datetime] = mapped_column(server_default=func.CURRENT_TIMESTAMP())
     updated_at: Mapped[datetime] = mapped_column(
@@ -40,6 +51,10 @@ class BaseRepository:
             )
         self.sessionmaker = sessionmaker
 
+    def refresh(self, model_instance: Base, attribute_names: list[str] | None = None) -> None:
+        with self.sessionmaker() as session:
+            session.refresh(model_instance, attribute_names)
+
     def create(self, model_instance: Base, attribute_names: list[str] | None = None) -> Base:
         # Assumes data from model_data has already been validated
         with self.sessionmaker() as session:
@@ -52,39 +67,36 @@ class BaseRepository:
                 raise e
         return model_instance
 
-    # TODO: needs test
-    def exists_with_id(
+    def query_with_options(
         self, 
-        id: str,  # UUID4
-    ) -> bool:
+        query: Query, 
+        relationships: list[LoadStrategy] | None = None
+    ) -> Query:
+        if not relationships:
+            return query
+        for relationship in relationships:
+          query = query.options(relationship)
+        return query  
+
+    # TODO: needs test
+    def exists_with_id(self, id: UUID) -> bool:
         with self.sessionmaker() as session:
             return session.scalar(exists().where(self.model.id == id).select())
 
-    # TODO: How to typehint joins?
-    def get_all(self) -> list[Base]:
+    def get_all(self, relationships: list[LoadStrategy] | None = None) -> list[Base]:
         with self.sessionmaker() as session:
-            return session.query(self.model).all()
+            return self.query_with_options(session.query(self.model), relationships).all()
 
     def get_count(self) -> int:
         with self.sessionmaker() as session:
             return session.query(self.model).count()
 
     # TODO: needs test
-    def get_by_id(
-        self, 
-        id: str,  # UUID4
-        attribute_names: list[str] | None = None
-    ) -> Base:
+    def get_by_id(self, id: UUID, relationships: list[LoadStrategy] | None = None) -> Base:
         with self.sessionmaker() as session:
-            model_instance = session.query(self.model).get(id)
-            if attribute_names:
-                session.refresh(model_instance, attribute_names)
-            return model_instance
+            return self.query_with_options(session.query(self.model), relationships).get(id)
 
     # TODO: needs test
-    def get_all_by_id(
-        self, 
-        ids: list[str],  # list[UUID4]
-    ) -> list[Base]:
+    def get_all_by_id(self, ids: list[UUID]) -> list[Base]:
         with self.sessionmaker() as session:
             return session.query(self.model).filter(self.model.id.in_(ids)).all()

@@ -3,6 +3,7 @@ from http import HTTPStatus
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import joinedload
 
 from src.auth.models import Organization
 from src.auth.repositories import OrganizationRepository, UserRepository
@@ -54,7 +55,8 @@ def test_organization_create(
     organization_count = test_organization_repository.get_count()
     organization_id = test_organization_repository.get_all()[0].id
     organization = test_organization_repository.get_by_id(
-        str(organization_id), attribute_names=["owner", "members"],
+        str(organization_id), 
+        relationships=[joinedload(Organization.owner), joinedload(Organization.members)],
     )
 
     assert response.status_code == HTTPStatus.OK
@@ -76,3 +78,17 @@ def test_organization_create(
         [member.username for member in organization.members] 
         == [member["username"] for member in response_json["members"]]
     )
+
+
+def test_organization_list(
+    test_organization_service, 
+    test_organization_repository, 
+    test_user_service,
+    test_organization,
+):
+    app.dependency_overrides[get_organization_service] = lambda: test_organization_service
+    app.dependency_overrides[get_user_service] = lambda: test_user_service
+
+    client = TestClient(app)
+    response = client.get("/auth/organizations")
+    response_json = response.json()

@@ -76,8 +76,9 @@ class TestUserService:
     # test_hash_password omitted - it would be basically testing 3rd party code
 
     def test_create_not_an_organization_member(self):
+        organization_service_mock = MagicMock()
         self.service.hash_password = lambda x: "hashed"
-        result = self.service.create_user(self.payload)
+        result = self.service.create_user(self.payload, organization_service_mock)
 
         # Assert repository.create got called with the correct arguments (i.e. that the password
         # gets hashed)
@@ -183,50 +184,7 @@ class TestOrganizationService:
         ]
 
         user_repository_mock = MagicMock()
-        user_repository_mock.add_users_to_organization.return_value = [
-            User(
-                id="d8719698-eb36-45d7-a630-0cdd56346457",
-                username="owner",
-                email="owner@test.com",
-                organization_id=self.organization.id,
-            ),
-            User(
-                id="e9819698-eb36-45d7-a630-0cdd56346457",
-                username="test_1",
-                email="test_1@test.com",
-                organization_id=self.organization.id,
-            ),
-            User(
-                id="f0919698-eb36-45d7-a630-0cdd56346457",
-                username="test_2",
-                email="test_2@test.com",
-                organization_id=self.organization.id,
-            ),
-        ]
-
         user_service_mock = MagicMock()
-        user_service_mock.create_user_response_flat.side_effect = [
-            UserResponseFlat(
-                id="d8719698-eb36-45d7-a630-0cdd56346457",
-                username="owner",
-                email="owner@test.com",
-            ),  # owner as owner
-            UserResponseFlat(
-                id="d8719698-eb36-45d7-a630-0cdd56346457",
-                username="owner",
-                email="owner@test.com",
-            ),  # owner as first member
-            UserResponseFlat(
-                id="e9819698-eb36-45d7-a630-0cdd56346457",
-                username="test_1",
-                email="test_1@test.com",
-            ),
-            UserResponseFlat(
-                id="f0919698-eb36-45d7-a630-0cdd56346457",
-                username="test_2",
-                email="test_2@test.com",
-            )
-        ] 
         user_service_mock.repository = user_repository_mock
 
         result = self.service.add_users_to_organization(
@@ -236,40 +194,36 @@ class TestOrganizationService:
         )
 
         self.mock_repo.exists_with_id.assert_called_once_with(self.organization.id)
-        assert isinstance(result[0], UserResponseFlat)
-        assert result[0].username == "owner"
-        assert isinstance(result[1][0], UserResponseFlat)
-        assert isinstance(result[1][1], UserResponseFlat)
-        assert isinstance(result[1][2], UserResponseFlat)
-        assert result[1][0].username == "owner"
-        assert result[1][1].username == "test_1"
-        assert result[1][2].username == "test_2"
+        user_repository_mock.add_users_to_organization.assert_called_once()
 
     def test_create_organization_response(self):
-        owner = UserResponseFlat(
-                id="d8719698-eb36-45d7-a630-0cdd56346457",
-                username="owner",
-                email="owner@test.com",
-                organization_id=self.organization.id,
-            )
-        members = [
-            UserResponseFlat(
+        self.organization.owner = User(
+            id="d8719698-eb36-45d7-a630-0cdd56346457",
+            email="owner@test.com",
+            username="owner",
+            organization_id=self.organization.id,
+        )
+        self.organization.members = [
+            self.organization.owner,
+            User(
                 id="e9819698-eb36-45d7-a630-0cdd56346457",
-                username="test_1",
                 email="test_1@test.com",
-                organization_id=self.organization.id,
-            ),
-            UserResponseFlat(
-                id="f0919698-eb36-45d7-a630-0cdd56346457",
-                username="test_2",
-                email="test_2@test.com",
+                username="test_1",
                 organization_id=self.organization.id,
             ),
         ]
 
-        result = self.service.create_organization_response(self.mock_repo.create(), owner, members)
+        result = self.service.create_organization_response(self.organization, UserService())
 
         assert str(result.id) == "00019698-eb36-45d7-a630-0cdd56346457"
         assert result.name == "test_org"
-        assert result.owner == owner
-        assert result.members == members
+        assert str(result.owner.id) == self.organization.owner.id
+        assert result.owner.email == self.organization.owner.email
+        assert result.owner.username == self.organization.owner.username
+        assert len(result.members) == 2
+        assert str(result.members[0].id) == self.organization.members[0].id
+        assert result.members[0].email == self.organization.members[0].email
+        assert result.members[0].username == self.organization.members[0].username
+        assert str(result.members[1].id) == self.organization.members[1].id
+        assert result.members[1].email == self.organization.members[1].email
+        assert result.members[1].username == self.organization.members[1].username
