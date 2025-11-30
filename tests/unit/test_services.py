@@ -154,7 +154,8 @@ class TestOrganizationService:
             members=[]
         )
         self.mock_repo.create.return_value = self.organization
-        self.service = OrganizationService(repository=self.mock_repo)
+        self.service = OrganizationService()
+        self.service.repository = self.mock_repo
 
     def test_validate_unique_organization_fields_name_duplicate(self):
         self.mock_repo.check_name_unique.return_value = False

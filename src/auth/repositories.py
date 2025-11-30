@@ -46,4 +46,4 @@ class OrganizationRepository(BaseRepository):
 
 
 def get_organization_repository() -> OrganizationRepository:
-    return OrganizationRepository
+    return OrganizationRepository()

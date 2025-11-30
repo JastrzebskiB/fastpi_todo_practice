@@ -95,11 +95,9 @@ class UserService:
 
 
 class OrganizationService:
-    def __init__(
-        self,
-        repository: OrganizationRepository = Depends(get_organization_repository),
-    ) -> None:
-        self.repository = repository
+    def __init__(self) -> None:
+        # TODO: class attribute?
+        self.repository = get_organization_repository()
     
     def get_all(self, user_service: UserService) -> list[OrganizationResponse]:
         organizations = self.repository.get_all(
@@ -152,7 +150,6 @@ class OrganizationService:
         member_ids = [payload.owner_id, *payload.member_ids]
         members = user_service.repository.add_users_to_organization(organization_id, member_ids)
 
-    # TODO: just pass organization, do not require owner and members as separate things
     def create_organization_response(
         self, 
         organization: Organization, 

@@ -3,9 +3,9 @@
 
 def get_user_service():
     from .services import UserService
-    return UserService
+    return UserService()
 
 
 def get_organization_service():
     from .services import OrganizationService
-    return OrganizationService
+    return OrganizationService()

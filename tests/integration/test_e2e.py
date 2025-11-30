@@ -1,4 +1,3 @@
-# Add e2e tests here buddy
 from http import HTTPStatus
 from unittest.mock import patch
 
