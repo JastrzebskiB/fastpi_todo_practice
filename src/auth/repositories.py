@@ -2,7 +2,7 @@ from sqlalchemy.sql import exists, select, update
 from sqlalchemy.orm import joinedload
 
 from ..core import BaseRepository, Session
-from .models import Organization, User
+from .models import Organization, OrganizationAccessRequest, User
 
 
 class UserRepository(BaseRepository):
@@ -75,3 +75,22 @@ class OrganizationRepository(BaseRepository):
 
 def get_organization_repository() -> OrganizationRepository:
     return OrganizationRepository()
+
+
+class OrganizationAccessRequestRepository(BaseRepository):
+    model = OrganizationAccessRequest
+
+    def check_request_uniqueness(self, requester_id: str, organization_id: str) -> bool:
+        with self.sessionmaker() as session:
+            # I think I love this syntax?
+            # https://stackoverflow.com/a/75900879
+            return not session.scalar(
+                exists().where(
+                    self.model.requester_id == requester_id,
+                    self.model.organization_id == organization_id,
+                ).select()
+            )
+
+
+def get_organization_access_request_repository() -> OrganizationAccessRequestRepository:
+    return OrganizationAccessRequestRepository()

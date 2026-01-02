@@ -9,20 +9,24 @@ from jwt import decode as jwt_decode, encode as jwt_encode, exceptions as jwt_ex
 from ..core.config import settings
 from .dependency_injection import get_organization_service, get_user_service
 from .dto import (
+    CreateOrganizationAccessRequestPayload,
     CreateOrganizationPayload, 
     CreateUserPayload,
     JWToken,
+    OrganizationAccessRequestResponse,
     OrganizationResponse,
-    OrganizationResponseFlat, 
+    OrganizationResponseFlat,
     UserResponse,
     UserResponseFlat,
 )
 from .exceptions import AuthenticationFailedException, BadJWTException
-from .models import Organization, User
+from .models import OrganizationAccessRequest, Organization, User
 from .repositories import (
     OrganizationRepository,
+    OrganizationAccessRequestRepository,
     UserRepository, 
-    get_organization_repository,   
+    get_organization_repository,
+    get_organization_access_request_repository,
     get_user_repository,
 )
 
@@ -48,7 +52,7 @@ class UserService:
             access_token=jwt_encode(
                 jwt_data, 
                 settings.JWT_SECRET_KEY, 
-                algorithm=settings.JWT_ALGORITHM
+                algorithm=settings.JWT_ALGORITHM,
             )
         )
 
@@ -65,12 +69,15 @@ class UserService:
 
         return self.create_jwt({"sub": user.email, "exp": datetime.utcnow() + expiration_minutes})
 
+    def get_by_id(self, user_id: str) -> UserResponseFlat | None:
+        return self.create_user_response_flat(self.repository.get_by_id(user_id))
+
     def get_current_user(self, token: JWToken) -> UserResponseFlat | None:
         try:
             payload = jwt_decode(
                 token, 
                 settings.JWT_SECRET_KEY, 
-                algorithms=[settings.JWT_ALGORITHM]
+                algorithms=[settings.JWT_ALGORITHM],
             )
             email = payload.get("sub")
         except jwt_exceptions.InvalidTokenError as e:
@@ -152,7 +159,10 @@ class OrganizationService:
             print(f"{repository=}", flush=True)  # TODO: Remove this whole branch?
             repository = repository.dependency()
         self.repository = repository
-    
+
+    def get_by_id(self, organization_id: str) -> OrganizationResponseFlat | None:
+        return self.create_organization_response_flat(self.repository.get_by_id(organization_id))
+
     def get_all(self, user_service: UserService) -> list[OrganizationResponse]:
         return [
             self.create_organization_response(organization, user_service)
@@ -162,7 +172,7 @@ class OrganizationService:
     def create_organization(
         self, 
         payload: CreateOrganizationPayload, 
-        user_service: UserService,
+        user_service: UserService,  # TODO: Are dependencies like this REALLY ok?
     ) -> OrganizationResponse:
         self.validate_unique_organization_fields(payload)
         organization = self.create_domain_organization_instance(payload)
@@ -221,3 +231,76 @@ class OrganizationService:
         organization: Organization,
     ) -> OrganizationResponseFlat:
         return OrganizationResponseFlat(id=organization.id, name=organization.name)
+
+
+class OrganizationAccessRequestService:
+    def __init__(
+        self, 
+        repository: OrganizationAccessRequestRepository = Depends(
+            get_organization_access_request_repository
+        ),
+    ) -> None:
+        if isinstance(repository, DependsType):
+            print(f"{repository=}", flush=True)  # TODO: Remove this whole branch?
+            repository = repository.dependency()
+        self.repository = repository
+
+    def create_organization_access_request(
+        self, 
+        payload: CreateOrganizationAccessRequestPayload,
+        user_service: UserService,
+        organization_service: OrganizationService,
+    ) -> OrganizationAccessRequestResponse:
+        self.validate_data(payload, user_service, organization_service)
+        access_request = self.create_domain_organization_access_request_instance(payload)
+        access_request = self.repository.create(access_request)
+        return self.create_organization_access_request_response(access_request)
+
+    def create_domain_organization_access_request_instance(
+        self, 
+        payload: CreateOrganizationAccessRequestPayload,
+    ) -> OrganizationAccessRequest:
+        return OrganizationAccessRequest(
+            requester_id=payload.requester_id, 
+            organization_id=payload.organization_id
+        )
+
+    def validate_data(
+        self, 
+        payload: CreateOrganizationAccessRequestPayload, 
+        user_service: UserService, # TODO: Are dependencies like these REALLY ok?
+        organization_service: OrganizationService,  
+    ) -> None:
+        # req_id = str(payload.requester_id)
+        # org_id = str(payload.organization_id)
+        # breakpoint()
+        # exists = self.repository.check_request_uniqueness(req_id, org_id)
+        if not self.repository.check_request_uniqueness(
+            str(payload.requester_id), str(payload.organization_id)
+        ):
+            # TODO: Start here!
+            # Should we raise all exceptions in the same format as in exceptions.py?
+            # The answer is a RESOUNDING yes!
+            raise ValueError(f"The following OrganizationAccessRequest already exists.")
+
+        # TODO: What if requesting user is already an owner of another Organization?
+        # TODO: What if requesting user is THE ONLY member of another Organization?
+
+        user = user_service.get_by_id(payload.requester_id)
+        if not user:
+            raise ValueError(f"User with id {payload.requester_id} doesn't exist.")
+
+        organization = organization_service.get_by_id(payload.organization_id)
+        if not organization:
+            raise ValueError(f"Organization with id {payload.organization_id} doesn't exist.")
+
+    def create_organization_access_request_response(
+        self, 
+        organization_access_request: OrganizationAccessRequest,
+    ) -> OrganizationAccessRequestResponse:
+        return OrganizationAccessRequestResponse(
+            id=organization_access_request.id,
+            requester_id=organization_access_request.requester_id,
+            organization_id=organization_access_request.organization_id,
+            approved=organization_access_request.approved,
+        )

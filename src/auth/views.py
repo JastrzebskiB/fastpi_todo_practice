@@ -2,10 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from uuid import UUID
 
-from .dto import CreateOrganizationPayload, CreateUserPayload
-from .exceptions import AuthenticationFailedException
+from .dto import (
+    CreateOrganizationAccessRequestPayload, 
+    CreateOrganizationPayload, 
+    CreateUserPayload,
+)
 from .models import User
 from .services import (
+    OrganizationAccessRequestService,
     OrganizationService, 
     UserService, 
     get_organization_service,
@@ -55,11 +59,6 @@ async def organization_create(
     return service.create_organization(payload, user_service)
 
 
-# TODO: do this after adding auth
-# @router.post("/organizations/{organization_id}")
-# async def organization_request_access(organization_id: UUID):
-
-
 @router.get("/organizations", tags=["organizations"])
 async def organization_list(
     token: str = Depends(oauth2_scheme),
@@ -67,3 +66,15 @@ async def organization_list(
     user_service: UserService = Depends(UserService)
 ):
     return service.get_all(user_service)
+
+
+# TODO: WIP: get user email from token, use email instead of id in model, DTOs, repo, services
+@router.post("/organization_access_request/")
+async def organization_request_access(
+    payload: CreateOrganizationAccessRequestPayload,
+    token: str = Depends(oauth2_scheme),
+    service: OrganizationAccessRequestService = Depends(OrganizationAccessRequestService),
+    user_service: UserService = Depends(UserService),
+    organization_service: OrganizationService = Depends(OrganizationService),
+):
+    return service.create_organization_access_request(payload, user_service, organization_service)

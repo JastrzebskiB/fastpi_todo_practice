@@ -61,3 +61,12 @@ class User(Base, CommonFieldsMixin):
 
     def __repr__(self):
         return f"<src.auth.models.User: {self.username}>"
+
+
+class OrganizationAccessRequest(Base, CommonFieldsMixin):
+    __tablename__ = "organization_access_request"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    requester_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user.id"), nullable=False)
+    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organization.id"), nullable=False)
+    approved: Mapped[bool] = mapped_column(nullable=True)
