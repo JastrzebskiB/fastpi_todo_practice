@@ -14,7 +14,7 @@ from src.main import app
 def test_user_create(test_user_service, test_user_repository):
     hash_password_return_value = "hashed_password"
     test_user_service.hash_password = lambda x: hash_password_return_value
-    app.dependency_overrides[get_user_service] = lambda: test_user_service
+    app.dependency_overrides[UserService] = lambda: test_user_service
     client = TestClient(app)
 
     payload = {"email": "test@test.com", "username": "test", "password": "not_hashed"}
@@ -40,8 +40,8 @@ def test_organization_create(
     test_user_service, 
     test_users,
 ):
-    app.dependency_overrides[get_organization_service] = lambda: test_organization_service
-    app.dependency_overrides[get_user_service] = lambda: test_user_service
+    app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+    app.dependency_overrides[UserService] = lambda: test_user_service
     client = TestClient(app)
 
     owner = test_users[0]

@@ -10,7 +10,7 @@ poetry install
 ### Config + database setup
 
 ```
-cp .env.example .env  # Make changes as necessary
+cp .env.example .env  # Make changes as necessary, including generating and pasting a SECRET_KEY
 psql -U postgres < scripts/setup_db.sql  # drops existing fastapi_todo_dev db
 alembic upgrade head
 ```

@@ -4,11 +4,16 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
+    # DB
     DB_HOST: str
     DB_PORT: int
     DB_NAME: str
     DB_USERNAME: str
     DB_PASSWORD: str
+    # JWT
+    JWT_SECRET_KEY: str
+    JWT_ALGORITHM: str  # TODO: make this an enum?
+    JWT_TOKEN_EXPIRY_MINUTES: int
 
     class Config:
         env_file = ".env"
@@ -31,6 +36,10 @@ class Settings(BaseSettings):
         else:
             credentials = self.DB_USERNAME
         return credentials
+
+    @property
+    def jwt_expiration(self):
+        return self.JWT_TOKEN_EXPIRY_MINUTES
 
 
 # TODO: Consider using get_settings with @lru_cache instead of initializing settings this way

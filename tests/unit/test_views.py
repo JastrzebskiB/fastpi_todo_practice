@@ -66,7 +66,7 @@ def get_organization_service_mock():
 
 
 def test_user_create():
-    app.dependency_overrides[get_user_service] = get_user_service_mock
+    app.dependency_overrides[UserService] = get_user_service_mock
 
     client = TestClient(app)
     payload = {"email": "test@test.com", "username": "test", "password": "not_hashed"}
@@ -80,7 +80,7 @@ def test_user_create():
 
 
 def test_organization_create():
-    app.dependency_overrides[get_organization_service] = get_organization_service_mock
+    app.dependency_overrides[OrganizationService] = get_organization_service_mock
 
     client = TestClient(app)
     payload = {

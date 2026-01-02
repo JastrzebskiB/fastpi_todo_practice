@@ -1,11 +1,31 @@
+from collections.abc import Callable
 from typing import Any
 
+from fastapi import Request
 from pydantic import BaseModel
 
 from .core import app
 from .auth.views import router as auth_router
 
 app.include_router(auth_router)
+
+
+# Uncomment if debugging of payloads or routing is needed. This middleware is intentionally 
+# commented out to speed up the app.
+# @app.middleware("http")
+async def debug_middleware(request: Request, call_next: Callable):
+    debugged_paths = []
+    if request.url.path not in debugged_paths:
+        response = await call_next(request)
+        return response
+    else:
+        try:
+            body = await request.body()
+            body_json = await request.json()
+        except Exception as e:
+            pass
+        breakpoint()
+    
 
 
 class TestModel(BaseModel):

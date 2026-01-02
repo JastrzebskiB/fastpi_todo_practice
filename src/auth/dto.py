@@ -3,6 +3,11 @@ from typing import Optional
 from pydantic import BaseModel, EmailStr, UUID4
 
 
+class JWToken(BaseModel):
+    token_type: str = "bearer"
+    access_token: str
+
+
 class CreateUserPayload(BaseModel):
     email: EmailStr
     username: str

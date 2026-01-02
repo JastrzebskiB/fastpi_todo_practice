@@ -1,4 +1,4 @@
-from sqlalchemy.sql import exists, update
+from sqlalchemy.sql import exists, select, update
 
 from ..core import BaseRepository, Session
 from .models import Organization, User
@@ -6,6 +6,23 @@ from .models import Organization, User
 
 class UserRepository(BaseRepository):
     model = User
+
+    def get_user_by_email_and_password(self, email: str, password_hash: str) -> User:
+        with self.sessionmaker() as session:
+            result = session.execute(
+                select(self.model).where(
+                    self.model.email == email,
+                    self.model.password_hash == password_hash,
+                )
+            ).first()
+            return result[0] if result else None
+    
+    def get_user_by_email(self, email: str) -> User:
+        with self.sessionmaker() as session:
+            result = session.execute(
+                select(self.model).where(self.model.email == email)
+            ).first()
+            return result[0] if result else None
 
     def check_username_unique(self, username: str) -> bool:
         with self.sessionmaker() as session:
