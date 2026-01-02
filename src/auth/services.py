@@ -5,7 +5,6 @@ from uuid import UUID
 from fastapi import Depends
 from fastapi.params import Depends as DependsType
 from jwt import decode as jwt_decode, encode as jwt_encode, exceptions as jwt_exceptions
-from sqlalchemy.orm import joinedload  # This is wrong, services shouldn't know about db specifics
 
 from ..core.config import settings
 from .dependency_injection import get_organization_service, get_user_service
@@ -155,13 +154,9 @@ class OrganizationService:
         self.repository = repository
     
     def get_all(self, user_service: UserService) -> list[OrganizationResponse]:
-        organizations = self.repository.get_all(
-            relationships=[joinedload(Organization.owner), joinedload(Organization.members)]
-        )
-
         return [
             self.create_organization_response(organization, user_service)
-            for organization in organizations
+            for organization in self.repository.get_all()
         ]
  
     def create_organization(
@@ -176,10 +171,9 @@ class OrganizationService:
             attribute_names=["owner", "members"]
         )
         self.add_users_to_organization(organization.id, payload, user_service)
-        organization = self.repository.get_by_id(
-            str(organization.id), 
-            relationships=[joinedload(Organization.owner), joinedload(Organization.members)],
-        )
+        # TODO: Ugly that we have to call a SELECT right after creating, this all should be 
+        # a single atomic operation
+        organization = self.repository.get_by_id(str(organization.id))
 
         return self.create_organization_response(organization, user_service)
 

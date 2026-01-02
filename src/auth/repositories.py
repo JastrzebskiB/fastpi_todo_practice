@@ -1,4 +1,5 @@
 from sqlalchemy.sql import exists, select, update
+from sqlalchemy.orm import joinedload
 
 from ..core import BaseRepository, Session
 from .models import Organization, User
@@ -54,12 +55,22 @@ def get_user_repository() -> UserRepository:
 class OrganizationRepository(BaseRepository):
     model = Organization
 
+    def get_all(
+        self, 
+        relationships: list = [joinedload(Organization.owner), joinedload(Organization.members)]
+    ) -> list[Organization]:
+        return super().get_all(relationships=relationships)
+
+    def get_by_id(
+        self, 
+        organization_id: str,
+        relationships: list = [joinedload(Organization.owner), joinedload(Organization.members)]
+    ) -> Organization | None:
+        return super().get_by_id(organization_id, relationships=relationships)
+
     def check_name_unique(self, name: str) -> bool:
         with self.sessionmaker() as session:
             return not session.scalar(exists().where(self.model.name == name).select())
-
-    # which repo to put this in?
-    # request access to organization?
 
 
 def get_organization_repository() -> OrganizationRepository:
