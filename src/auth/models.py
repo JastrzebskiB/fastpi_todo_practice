@@ -2,11 +2,19 @@ import uuid
 from datetime import datetime
 from typing import Optional, List
 
-from sqlalchemy import ForeignKey
+from sqlalchemy import Column, ForeignKey, Table
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
 from ..core.db import Base, CommonFieldsMixin
+
+
+organization_member_join_table = Table(
+    "organization_members_join_table",
+    Base.metadata,
+    Column("organization_id", ForeignKey("organization.id"), primary_key=True),
+    Column("member_id", ForeignKey("user.id"), primary_key=True),
+)
 
 
 class Organization(Base, CommonFieldsMixin):
@@ -15,16 +23,12 @@ class Organization(Base, CommonFieldsMixin):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(unique=True, nullable=False)
 
-    # one-to-many relationship ("one" side):
-    # relationship foreign_keys arg: "[ClassName.field_name]"
+    # many-to-many relationships:
     members: Mapped[List["User"]] = relationship(
-        foreign_keys="[User.organization_id]",
-        back_populates="organization", 
-        viewonly=True,
+        secondary=organization_member_join_table,
+        back_populates="organizations"
     )
-    # one-to-one relationship:
-    # ForeignKey: "table_name.field_name"  (field exists in related table)
-    # relationship foreign_keys arg: field_name (field exists in this table)
+    # one-to-one relationships:
     owner_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("user.id"), nullable=True)
     owner: Mapped[Optional["User"]] = relationship(
         foreign_keys=[owner_id], 
@@ -40,22 +44,14 @@ class User(Base, CommonFieldsMixin):
     username: Mapped[str] = mapped_column(unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(nullable=False)
 
-    # one-to-one relationship
-    # relationship foreign_keys arg: "ClassName.field_name" (field exists in related table)
+    # one-to-one relationships:
     owned_organization: Mapped["Organization"] = relationship(
         foreign_keys="Organization.owner_id", 
         back_populates="owner",
     )
-    # many-to-one relationship ("many" side):
-    # ForeignKey: "table_name.field_name" (field exists in related table)
-    # relationship foreign_keys arg: field_name (field exists in this table)
-    # organization_id and organization relationship create a many-to-one relationship
-    organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        ForeignKey("organization.id"), 
-        nullable=True,
-    )
-    organization: Mapped[Optional["Organization"]] = relationship(
-        foreign_keys=[organization_id],
+    # many-to-many relationships:
+    organizations: Mapped[Optional["Organization"]] = relationship(
+        secondary=organization_member_join_table,
         back_populates="members",
     )
 
@@ -68,5 +64,7 @@ class OrganizationAccessRequest(Base, CommonFieldsMixin):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     requester_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("user.id"), nullable=False)
-    organization_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("organization.id"), nullable=False)
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organization.id"), nullable=False
+    )
     approved: Mapped[bool] = mapped_column(nullable=True)
