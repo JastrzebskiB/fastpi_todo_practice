@@ -48,28 +48,69 @@ class TestSignIn:
         assert response_json["detail"] == AuthenticationFailedException.detail
 
 
-@pytest.mark.skip(reason="cleaning up the codebase")
-def test_user_create(test_user_service, test_user_repository):
-    hash_password_return_value = "hashed_password"
-    test_user_service.hash_password = lambda x: hash_password_return_value
-    app.dependency_overrides[UserService] = lambda: test_user_service
-    client = TestClient(app)
+class TestUserCreate:
+    def test_user_create_success(self, test_user_service, test_user_repository):
+        password = "pass"
+        password_hashed = JWTService().hash_password(password)
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
 
-    payload = {"email": "test@test.com", "username": "test", "password": "not_hashed"}
-    response = client.post("/auth/users", json=payload)
-    response_json = response.json()
+        payload = {"email": "test@test.com", "username": "test", "password": password}
+        response = client.post("/auth/users", json=payload)
+        response_json = response.json()
 
-    user_count = test_user_repository.get_count()
-    users = test_user_repository.get_all()
+        user_count = test_user_repository.get_count()
+        users = test_user_repository.get_all()
 
-    assert response.status_code == HTTPStatus.OK
-    assert user_count == 1
-    assert response_json["owned_organization"] is None
-    assert response_json["organization"] is None
-    assert str(users[0].id) == response.json()["id"]
-    assert users[0].email == payload["email"] == response_json["email"]
-    assert users[0].username == payload["username"] == response_json["username"]
-    assert users[0].password_hash == hash_password_return_value
+        assert response.status_code == HTTPStatus.OK
+        assert user_count == 1
+        assert str(users[0].id) == response.json()["id"]
+        assert users[0].email == payload["email"] == response_json["email"]
+        assert users[0].username == payload["username"] == response_json["username"]
+        assert users[0].password_hash == password_hashed
+
+    @pytest.mark.parametrize(
+        "email, username, expected_error",
+        [
+            (
+                "test_user@test.com", 
+                "test_user", 
+                "The following fields contain non-unique values: ['username', 'email']",
+            ),
+            (
+                "test_user@test.com", 
+                "unique_username", 
+                "The following field contains non-unique value: ['email']",
+            ),
+            (
+                "unique_email@test.com", 
+                "test_user", 
+                "The following field contains non-unique value: ['username']",
+            ),
+
+        ]
+    )
+    def test_user_create_duplicate_fields(
+        self, 
+        test_user_service, 
+        test_user_repository, 
+        test_user,
+        email,
+        username,
+        expected_error
+    ):
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        payload = {"email": email, "username": username, "password": "pass"}
+        response = client.post("/auth/users", json=payload)
+        response_json = response.json()
+
+        user_count = test_user_repository.get_count()
+
+        assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+        assert user_count == 1
+        assert response_json["detail"] == expected_error
 
 
 @pytest.mark.skip(reason="cleaning up the codebase")

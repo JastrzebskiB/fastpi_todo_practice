@@ -12,8 +12,6 @@ class CreateUserPayload(BaseModel):
     email: EmailStr
     username: str
     password: str
-    
-    organization_id: UUID4 | None = None
 
 
 class UserResponse(BaseModel):
@@ -22,7 +20,7 @@ class UserResponse(BaseModel):
     username: str
 
     owned_organization: Optional["OrganizationResponseFlat"]
-    organization: Optional["OrganizationResponseFlat"]
+    organizations: list["OrganizationResponseFlat"]
 
 
 class UserResponseFlat(BaseModel):

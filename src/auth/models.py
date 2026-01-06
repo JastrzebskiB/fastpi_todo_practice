@@ -50,7 +50,7 @@ class User(Base, CommonFieldsMixin):
         back_populates="owner",
     )
     # many-to-many relationships:
-    organizations: Mapped[Optional["Organization"]] = relationship(
+    organizations: Mapped[List["Organization"]] = relationship(
         secondary=organization_member_join_table,
         back_populates="members",
     )

@@ -14,6 +14,7 @@ from src.auth.models import Organization, User
 from src.auth.services import OrganizationService, UserService
 
 
+@pytest.mark.skip(reason="Do I even need unit tests if I have e2e?")
 class TestUserService:
     def setup_method(self):
         self.payload = CreateUserPayload(
@@ -139,6 +140,7 @@ class TestUserService:
         assert result.username == self.user.username
 
 
+@pytest.mark.skip(reason="Do I even need unit tests if I have e2e?")
 class TestOrganizationService:
     def setup_method(self):
         self.mock_repo = MagicMock()

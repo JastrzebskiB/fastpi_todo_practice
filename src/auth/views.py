@@ -28,16 +28,10 @@ async def sign_in(
 
 
 @router.post("/users", tags=["users"])
-async def user_create(
-    payload: CreateUserPayload, 
-    service: UserService = Depends(UserService),
-    organization_service: OrganizationService = Depends(OrganizationService),
-):
-    return service.create_user(payload, organization_service)
-
+async def user_create(payload: CreateUserPayload, service: UserService = Depends(UserService)):
+    return service.create_user(payload)
 
 # ===== LINE ABOVE WHICH WORK IS DONE =====
-
 
 @router.get("/me")
 async def user_me(
@@ -46,6 +40,7 @@ async def user_me(
 ):
     return user_service.get_current_user(token)
 
+# ===== LINE ABOVE WHICH WIP =====
 
 @router.get("/me/organizations")
 async def organizations_mine(

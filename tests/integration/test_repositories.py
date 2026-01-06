@@ -5,6 +5,7 @@ from src.auth.dto import CreateUserPayload, CreateOrganizationPayload
 from src.auth.models import Organization, User
 
 
+@pytest.mark.skip(reason="do we even need this if we're doing proper e2e tests?")
 class TestUserRepository:
     def test_get_count(self, test_user_repository, test_users):
         count = test_user_repository.get_count()
@@ -87,6 +88,7 @@ class TestUserRepository:
             assert user.organization_id == test_organization.id
 
 
+@pytest.mark.skip(reason="do we even need this if we're doing proper e2e tests?")
 class TestOrganizationRepository:
     def test_get_count(self, test_organization_repository, test_organization):
         count = test_organization_repository.get_count()

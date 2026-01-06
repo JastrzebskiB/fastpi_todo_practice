@@ -157,6 +157,7 @@ def test_user(
     TestSession: sessionmaker,
     username: str = "test_user",
     email: str = "test_user@test.com",
+    # Unhashed password is "pass"
     password_hash: str = "d74ff0ee8da3b9806b18c877dbf29bbde50b5bd8e4dad7a3a725000feb82e8f1",
     organizations: list[Organization] | None = None,
     owned_organization: Organization | None = None
@@ -180,6 +181,7 @@ def test_users(
     TestSession: sessionmaker,
     usernames: list[str] = ["test_1", "test_2"],
     emails: list[str] = ["test_1@test.com", "test_2@test.com"],
+    # Unhashed password is "pass"
     password_hashes: list[str] = [
         "d74ff0ee8da3b9806b18c877dbf29bbde50b5bd8e4dad7a3a725000feb82e8f1", 
         "d74ff0ee8da3b9806b18c877dbf29bbde50b5bd8e4dad7a3a725000feb82e8f1",

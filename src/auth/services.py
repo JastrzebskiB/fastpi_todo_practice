@@ -2,11 +2,13 @@ from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 
 from fastapi import Depends
+from fastapi.params import Depends as DependsType
 from fastapi.security import OAuth2PasswordRequestForm
 from jwt import decode as jwt_decode, encode as jwt_encode, exceptions as jwt_exceptions
 
 from ..core.config import settings
 from . import exceptions
+from .dependency_injection import get_jwt_service, get_user_service, get_organization_service
 from .dto import (
     CreateOrganizationPayload, 
     CreateUserPayload,
@@ -47,10 +49,9 @@ class JWTService:
 
 
 class UserService:
-    def __init__(
-        self, 
-        repository: UserRepository = Depends(UserRepository),
-    ) -> None:
+    def __init__(self, repository: UserRepository = Depends(UserRepository)) -> None:
+        if isinstance(repository, DependsType):
+            repository = repository.dependency()
         self.repository = repository
 
     def sign_user_in(
@@ -60,7 +61,7 @@ class UserService:
         jwt_service: JWTService = JWTService(),
     ) -> JWToken | None:
         email, password = form_data.username, form_data.password
-        user = self.repository.get_user_by_email_and_password(
+        user = self.repository.get_by_email_and_password(
             email, jwt_service.hash_password(password)
         )
         if not user:
@@ -68,6 +69,30 @@ class UserService:
 
         return jwt_service.create_jwt(
             {"sub": user.email, "exp": datetime.now(tz=UTC) + expiration_minutes}
+        )
+
+    def create_user(
+        self, 
+        payload: CreateUserPayload, 
+        jwt_service: JWTService = Depends(get_jwt_service),
+    ) -> UserResponse:
+        if isinstance(jwt_service, DependsType):
+            jwt_service = jwt_service.dependency()
+
+        self.validate_unique_user_fields(payload)
+        user = self.repository.create(self.create_domain_user_instance(payload, jwt_service))
+
+        return self.create_user_response_flat(user)
+
+    def create_domain_user_instance(
+        self, 
+        payload: CreateUserPayload, 
+        jwt_service: JWTService
+    ) -> User:
+        return User(
+            email=payload.email,
+            username=payload.username,
+            password_hash=jwt_service.hash_password(payload.password),
         )
 
     def get_by_id(self, user_id: str) -> UserResponseFlat | None:
@@ -90,16 +115,7 @@ class UserService:
             raise exceptions.UserNotFound
         return self.create_user_response_flat(self.repository.get_user_by_email(email))
 
-    def create_user(
-        self, 
-        payload: CreateUserPayload, 
-        organization_service: "OrganizationService" 
-    ) -> UserResponse:
-        self.validate_unique_user_fields(payload)
-        user = self.create_domain_user_instance(payload)
-        user = self.repository.create(user, attribute_names=["owned_organization", "organizations"])
-        return self.create_user_response(user, organization_service)
-
+    # Validation
     def validate_unique_user_fields(self, payload: CreateUserPayload) -> None:
         duplicate_fields = []
     
@@ -118,33 +134,29 @@ class UserService:
                 f"The following {field} {contain} non-unique {value}: {duplicate_fields}"
             )
 
-    def create_domain_user_instance(self, payload: CreateUserPayload) -> User:
-        return User(
-            email=payload.email,
-            username=payload.username,
-            password_hash=self.hash_password(payload.password),
-            organization_id=payload.organization_id,
-        )
-
+    # Serialization
     def create_user_response(
         self, 
         user: User, 
-        organization_service: "OrganizationService"
-    ) -> UserResponse:
+        organization_service: "OrganizationService" = Depends("OrganizationService")
+    ) -> UserResponse | None:
+        if not user:
+            return None
+
         owned_organization = (
             organization_service.create_organization_response_flat(user.owned_organization)
             if user.owned_organization else None
         )
-        organization = (
-            organization_service.create_organization_response_flat(user.organization) 
-            if user.organization_id else None
-        )
+        organizations = [
+            organization_service.create_organization_response_flat(organization) 
+            for organization in user.organizations
+        ] if user.organizations else []
         return UserResponse(
             id=user.id, 
             email=user.email, 
             username=user.username,
             owned_organization=owned_organization,
-            organization=organization,
+            organizations=organizations,
         )
     
     def create_user_response_flat(self, user: User) -> UserResponseFlat | None:
@@ -156,9 +168,20 @@ class UserService:
 class OrganizationService:
     def __init__(
         self, 
-        repository: OrganizationRepository = Depends(OrganizationRepository)
+        repository: OrganizationRepository = Depends(OrganizationRepository),
     ) -> None:
+        if isinstance(repository, DependsType):
+            repository = repository.dependency()
         self.repository = repository
+
+    def add_users_to_organizations_by_id(
+        self, 
+        users: list[User], 
+        organization_ids: list[str],
+    ) -> None:
+        self.repository.add_users_to_organizations_by_id(
+            users=users, organization_ids=organization_ids
+        )
 
     def get_by_id(self, organization_id: str) -> OrganizationResponseFlat | None:
         return self.create_organization_response_flat(self.repository.get_by_id(organization_id))
@@ -323,7 +346,7 @@ class OrganizationAccessRequestService:
         if requester_id in member_ids:
             raise exceptions.ValidationException(f"You are already a member of this Organization")
 
-        # TODO: Start here/This next: handle this in the "approving access requests" bit
+        # TODO: Do this after the refactor: handle this in the "approving access requests" bit
         # TODO: What if requesting user is already a member of another Organization
         # TODO: What if requesting user is already an owner of another Organization?
         # TODO: What if requesting user is THE ONLY member of another Organization?
