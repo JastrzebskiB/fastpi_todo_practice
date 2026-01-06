@@ -10,13 +10,12 @@ class UserRepository(BaseRepository):
 
     def get_user_by_email_and_password(self, email: str, password_hash: str) -> User:
         with self.sessionmaker() as session:
-            result = session.execute(
+            return session.scalar(
                 select(self.model).where(
                     self.model.email == email,
                     self.model.password_hash == password_hash,
                 )
-            ).first()
-            return result[0] if result else None
+            )
     
     def get_user_by_email(self, email: str) -> User:
         with self.sessionmaker() as session:
@@ -46,10 +45,6 @@ class UserRepository(BaseRepository):
             )
             session.commit()
             return self.get_all_by_id(member_ids)
-
-
-def get_user_repository() -> UserRepository:
-    return UserRepository()
 
 
 class OrganizationRepository(BaseRepository):
@@ -87,10 +82,6 @@ class OrganizationRepository(BaseRepository):
             return not session.scalar(exists().where(self.model.name == name).select())
 
 
-def get_organization_repository() -> OrganizationRepository:
-    return OrganizationRepository()
-
-
 class OrganizationAccessRequestRepository(BaseRepository):
     model = OrganizationAccessRequest
 
@@ -114,7 +105,3 @@ class OrganizationAccessRequestRepository(BaseRepository):
                     self.model.approved == None,  # is None doesn't work here!
                 )
             ).scalars().all()
-
-
-def get_organization_access_request_repository() -> OrganizationAccessRequestRepository:
-    return OrganizationAccessRequestRepository()

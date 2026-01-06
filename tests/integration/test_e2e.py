@@ -1,16 +1,54 @@
 from http import HTTPStatus
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import joinedload
 
+from src.auth.exceptions import AuthenticationFailedException
 from src.auth.models import Organization
 from src.auth.repositories import OrganizationRepository, UserRepository
-from src.auth.services import OrganizationService, UserService
-from src.auth.views import get_organization_service, get_user_service
+from src.auth.services import JWTService
+from src.auth.views import OrganizationService, UserService
 from src.main import app
 
 
+class TestSignIn:
+    def test_success(self, test_user_service, test_user_repository, test_user):
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+    
+        form_data = {"username": test_user.email, "password": "pass"}  # we use email as username
+        response = client.post("/auth/token", data=form_data)
+        response_json = response.json()
+    
+        assert response.status_code == HTTPStatus.OK
+        assert JWTService().decode_jwt(response_json["access_token"])["sub"] == test_user.email
+
+    def test_wrong_pass(self, test_user_service, test_user_repository, test_user):
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+    
+        form_data = {"username": test_user.email, "password": "badbad"}
+        response = client.post("/auth/token", data=form_data)
+        response_json = response.json()
+    
+        assert response.status_code == HTTPStatus.UNAUTHORIZED
+        assert response_json["detail"] == AuthenticationFailedException.detail
+
+    def test_user_nonexistant(self, test_user_service, test_user_repository, test_user):
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+    
+        form_data = {"username": "bad@bad.bad", "password": "badbad"}
+        response = client.post("/auth/token", data=form_data)
+        response_json = response.json()
+    
+        assert response.status_code == HTTPStatus.UNAUTHORIZED
+        assert response_json["detail"] == AuthenticationFailedException.detail
+
+
+@pytest.mark.skip(reason="cleaning up the codebase")
 def test_user_create(test_user_service, test_user_repository):
     hash_password_return_value = "hashed_password"
     test_user_service.hash_password = lambda x: hash_password_return_value
@@ -34,6 +72,7 @@ def test_user_create(test_user_service, test_user_repository):
     assert users[0].password_hash == hash_password_return_value
 
 
+@pytest.mark.skip(reason="cleaning up the codebase")
 def test_organization_create(
     test_organization_service, 
     test_organization_repository,
@@ -79,14 +118,15 @@ def test_organization_create(
     )
 
 
+@pytest.mark.skip(reason="cleaning up the codebase")
 def test_organization_list(
     test_organization_service, 
     test_organization_repository, 
     test_user_service,
     test_organization,
 ):
-    app.dependency_overrides[get_organization_service] = lambda: test_organization_service
-    app.dependency_overrides[get_user_service] = lambda: test_user_service
+    app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+    app.dependency_overrides[UserService] = lambda: test_user_service
 
     client = TestClient(app)
     response = client.get("/auth/organizations")

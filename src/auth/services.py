@@ -1,10 +1,8 @@
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
-from uuid import UUID
 
 from fastapi import Depends
-from fastapi.exceptions import RequestValidationError
-from fastapi.params import Depends as DependsType
+from fastapi.security import OAuth2PasswordRequestForm
 from jwt import decode as jwt_decode, encode as jwt_encode, exceptions as jwt_exceptions
 
 from ..core.config import settings
@@ -25,9 +23,6 @@ from .repositories import (
     OrganizationRepository,
     OrganizationAccessRequestRepository,
     UserRepository, 
-    get_organization_repository,
-    get_organization_access_request_repository,
-    get_user_repository,
 )
 
 
@@ -54,17 +49,17 @@ class JWTService:
 class UserService:
     def __init__(
         self, 
-        repository: UserRepository = Depends(get_user_repository),
+        repository: UserRepository = Depends(UserRepository),
     ) -> None:
         self.repository = repository
 
     def sign_user_in(
         self, 
-        email: str, 
-        password: str, 
+        form_data: OAuth2PasswordRequestForm,
         expiration_minutes: timedelta = timedelta(minutes=settings.jwt_expiration),
         jwt_service: JWTService = JWTService(),
     ) -> JWToken | None:
+        email, password = form_data.username, form_data.password
         user = self.repository.get_user_by_email_and_password(
             email, jwt_service.hash_password(password)
         )
@@ -72,7 +67,7 @@ class UserService:
             raise exceptions.AuthenticationFailedException
 
         return jwt_service.create_jwt(
-            {"sub": user.email, "exp": datetime.utcnow() + expiration_minutes}
+            {"sub": user.email, "exp": datetime.now(tz=UTC) + expiration_minutes}
         )
 
     def get_by_id(self, user_id: str) -> UserResponseFlat | None:
@@ -102,7 +97,7 @@ class UserService:
     ) -> UserResponse:
         self.validate_unique_user_fields(payload)
         user = self.create_domain_user_instance(payload)
-        user = self.repository.create(user, attribute_names=["owned_organization", "organization"])
+        user = self.repository.create(user, attribute_names=["owned_organization", "organizations"])
         return self.create_user_response(user, organization_service)
 
     def validate_unique_user_fields(self, payload: CreateUserPayload) -> None:
@@ -161,7 +156,7 @@ class UserService:
 class OrganizationService:
     def __init__(
         self, 
-        repository: OrganizationRepository = Depends(get_organization_repository)
+        repository: OrganizationRepository = Depends(OrganizationRepository)
     ) -> None:
         self.repository = repository
 
@@ -241,7 +236,7 @@ class OrganizationService:
     # not a many-to-one
     def add_users_to_organization(
         self, 
-        organization_id: UUID,
+        organization_id: str,
         payload: CreateOrganizationPayload, 
         user_service: UserService,
     ) -> None:
@@ -279,7 +274,7 @@ class OrganizationAccessRequestService:
     def __init__(
         self, 
         repository: OrganizationAccessRequestRepository = Depends(
-            get_organization_access_request_repository
+            OrganizationAccessRequestRepository
         ),
     ) -> None:
         self.repository = repository

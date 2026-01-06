@@ -2,6 +2,8 @@ from datetime import datetime
 from typing import Union
 from uuid import UUID
 
+from fastapi import Depends
+from fastapi.params import Depends as DependsType
 from sqlalchemy import create_engine
 from sqlalchemy.orm import (
     DeclarativeBase, 
@@ -41,11 +43,16 @@ class CommonFieldsMixin:
 class BaseRepository:
     model = None
 
-    def __init__(self, sessionmaker: sessionmaker = Session):
+    # Depends(lambda: Session) is a hack, but it allows for DI to work throughout the whole app
+    # wherever Repositories are needed (which is basically everywhere)
+    def __init__(self, sessionmaker: sessionmaker = Depends(lambda: Session)):
         if not self.model:
             raise NotImplementedError(
                 "Repositories are model specific and should have model as a class variable."
             )
+        # Hack in case I need to work with repositories directly outside of FastAPI context
+        if isinstance(sessionmaker, DependsType):
+            sessionmaker = sessionmaker.dependency()
         self.sessionmaker = sessionmaker
 
     # TODO: Remove this before "release", it's just added for ease of development

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from uuid import UUID
 
@@ -15,8 +15,6 @@ from .services import (
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-
-# Technically a view I suppose?
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
 
@@ -25,16 +23,8 @@ async def sign_in(
     form_data: OAuth2PasswordRequestForm = Depends(),
     user_service: UserService = Depends(UserService),
 ): 
-    # form_data.username even though the email is expected, this is fine for now
-    return user_service.sign_user_in(form_data.username, form_data.password)
-
-
-@router.get("/me")
-async def user_me(
-    token: str = Depends(oauth2_scheme),
-    user_service: UserService = Depends(UserService),
-):
-    return user_service.get_current_user(token)
+    # form_data.username even though the email is expected as content, this is intentional
+    return user_service.sign_user_in(form_data)
 
 
 @router.post("/users", tags=["users"])
@@ -44,6 +34,17 @@ async def user_create(
     organization_service: OrganizationService = Depends(OrganizationService),
 ):
     return service.create_user(payload, organization_service)
+
+
+# ===== LINE ABOVE WHICH WORK IS DONE =====
+
+
+@router.get("/me")
+async def user_me(
+    token: str = Depends(oauth2_scheme),
+    user_service: UserService = Depends(UserService),
+):
+    return user_service.get_current_user(token)
 
 
 @router.get("/me/organizations")

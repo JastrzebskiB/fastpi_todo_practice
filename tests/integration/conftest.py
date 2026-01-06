@@ -132,18 +132,20 @@ def create_test_user(
     username: str,
     email: str,
     password_hash: str,
-    organization: Organization | None,
+    organizations: list[Organization],
     owned_organization: Organization | None,
 ) -> User:
     user = User(
         username=username, 
         email=email,
         password_hash=password_hash,
-        organization=organization, 
         owned_organization=owned_organization,
     )
+    for organization in organizations:
+        organization.members.append(user)
     with TestSession() as session:
         session.add(user)
+        [session.add(organization) for organization in organizations]
         session.commit()
         session.refresh(user)
 
@@ -154,17 +156,19 @@ def create_test_user(
 def test_user(
     TestSession: sessionmaker,
     username: str = "test_user",
-    password_hash: str = "not_a_hash",
     email: str = "test_user@test.com",
-    organization: Organization | None = None,
+    password_hash: str = "d74ff0ee8da3b9806b18c877dbf29bbde50b5bd8e4dad7a3a725000feb82e8f1",
+    organizations: list[Organization] | None = None,
     owned_organization: Organization | None = None
 ) -> User:
+    if organizations is None:
+        organizations = []
     yield create_test_user(
         TestSession, 
         username, 
         email, 
         password_hash, 
-        organization, 
+        organizations, 
         owned_organization,
     )
 
@@ -176,8 +180,11 @@ def test_users(
     TestSession: sessionmaker,
     usernames: list[str] = ["test_1", "test_2"],
     emails: list[str] = ["test_1@test.com", "test_2@test.com"],
-    password_hashes: list[str] = ["not_a_hash", "not_a_hash_either"],
-    organizations: list[Organization] = [None, None],
+    password_hashes: list[str] = [
+        "d74ff0ee8da3b9806b18c877dbf29bbde50b5bd8e4dad7a3a725000feb82e8f1", 
+        "d74ff0ee8da3b9806b18c877dbf29bbde50b5bd8e4dad7a3a725000feb82e8f1",
+    ],
+    organizations: list[list[Organization]] = [[], []],
     owned_organizations: list[Organization] = [None, None],
 ) -> list[User]:
     user_data_all = zip(usernames, emails, password_hashes, organizations, owned_organizations)
