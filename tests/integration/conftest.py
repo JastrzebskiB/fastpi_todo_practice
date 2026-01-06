@@ -120,8 +120,6 @@ def test_user_service(test_user_repository) -> UserService:
 
 @fixture(scope="function")
 def test_organization_service(test_organization_repository) -> OrganizationService:
-    # TODO: Keep it like this for now, reconsider going fully dependency injection and inject even 
-    # friggin repositories in the view (but that's such a tight coupling...)
     organization_service = OrganizationService()
     organization_service.repository = test_organization_repository
     yield organization_service
@@ -129,7 +127,6 @@ def test_organization_service(test_organization_repository) -> OrganizationServi
     # Cleanup done in test_organization_repository
 
 
-# TODO: Consider using partials here?
 def create_test_user(
     TestSession: sessionmaker,
     username: str,
@@ -193,7 +190,6 @@ def test_users(
     # Note: cleanup only happens in test_user_repository
 
 
-# TODO: Consider using partials here?
 def create_test_organization(
     TestSession: sessionmaker, 
     name: str, 

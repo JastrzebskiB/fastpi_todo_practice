@@ -3,23 +3,23 @@ from hashlib import sha256
 from uuid import UUID
 
 from fastapi import Depends
+from fastapi.exceptions import RequestValidationError
 from fastapi.params import Depends as DependsType
 from jwt import decode as jwt_decode, encode as jwt_encode, exceptions as jwt_exceptions
 
 from ..core.config import settings
-from .dependency_injection import get_organization_service, get_user_service
+from . import exceptions
 from .dto import (
-    CreateOrganizationAccessRequestPayload,
     CreateOrganizationPayload, 
     CreateUserPayload,
     JWToken,
+    OrganizationAccessRequestDecisionPayload,
     OrganizationAccessRequestResponse,
     OrganizationResponse,
     OrganizationResponseFlat,
     UserResponse,
     UserResponseFlat,
 )
-from .exceptions import AuthenticationFailedException, BadJWTException
 from .models import OrganizationAccessRequest, Organization, User
 from .repositories import (
     OrganizationRepository,
@@ -31,22 +31,10 @@ from .repositories import (
 )
 
 
-class UserService:
-    def __init__(
-        self, 
-        repository: UserRepository = Depends(get_user_repository),
-    ) -> None:
-        if isinstance(repository, DependsType):
-            print(f"{repository=}", flush=True)  # TODO: Remove this whole branch?
-            repository = repository.dependency()
-        self.repository = repository
-
-    # TODO: Should the security methods be in this service?
+class JWTService:
     def hash_password(self, password: str) -> str:
         return sha256(password.encode()).hexdigest()
 
-    # TODO: Should the security methods be in this service?
-    # TODO: should the data be passed as a dict?
     def create_jwt(self, jwt_data: dict) -> JWToken:
         return JWToken(
             access_token=jwt_encode(
@@ -56,35 +44,55 @@ class UserService:
             )
         )
 
-    # TODO: Should the security methods be in this service?
+    def decode_jwt(self, token: JWToken) -> dict:
+        return jwt_decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
+
+    def get_user_email(self, token: JWToken) -> dict:
+        return self.decode_jwt(token).get("sub")
+
+
+class UserService:
+    def __init__(
+        self, 
+        repository: UserRepository = Depends(get_user_repository),
+    ) -> None:
+        self.repository = repository
+
     def sign_user_in(
         self, 
         email: str, 
         password: str, 
-        expiration_minutes: timedelta = timedelta(minutes=settings.jwt_expiration)
+        expiration_minutes: timedelta = timedelta(minutes=settings.jwt_expiration),
+        jwt_service: JWTService = JWTService(),
     ) -> JWToken | None:
-        user = self.repository.get_user_by_email_and_password(email, self.hash_password(password))
+        user = self.repository.get_user_by_email_and_password(
+            email, jwt_service.hash_password(password)
+        )
         if not user:
-            raise AuthenticationFailedException
+            raise exceptions.AuthenticationFailedException
 
-        return self.create_jwt({"sub": user.email, "exp": datetime.utcnow() + expiration_minutes})
+        return jwt_service.create_jwt(
+            {"sub": user.email, "exp": datetime.utcnow() + expiration_minutes}
+        )
 
     def get_by_id(self, user_id: str) -> UserResponseFlat | None:
         return self.create_user_response_flat(self.repository.get_by_id(user_id))
 
-    def get_current_user(self, token: JWToken) -> UserResponseFlat | None:
+    def get_current_user(
+        self, 
+        token: JWToken, 
+        check_user_exists: bool = False,
+        jwt_service: JWTService = JWTService(),
+    ) -> UserResponseFlat | None:
         try:
-            payload = jwt_decode(
-                token, 
-                settings.JWT_SECRET_KEY, 
-                algorithms=[settings.JWT_ALGORITHM],
-            )
-            email = payload.get("sub")
+            email = jwt_service.get_user_email(token)
         except jwt_exceptions.InvalidTokenError as e:
-            raise AuthenticationFailedException
+            raise exceptions.AuthenticationFailedException
 
         if email is None:
-            raise BadJWTException
+            raise exceptions.BadJWTException
+        if check_user_exists and self.repository.check_email_unique(email):
+            raise exceptions.UserNotFound
         return self.create_user_response_flat(self.repository.get_user_by_email(email))
 
     def create_user(
@@ -111,7 +119,7 @@ class UserService:
             field = "field" if singular else "fields"
             contain = "contains" if singular else "contain"
             value = "value" if singular else "values"
-            raise ValueError(
+            raise exceptions.ValidationException(
                 f"The following {field} {contain} non-unique {value}: {duplicate_fields}"
             )
 
@@ -155,20 +163,38 @@ class OrganizationService:
         self, 
         repository: OrganizationRepository = Depends(get_organization_repository)
     ) -> None:
-        if isinstance(repository, DependsType):
-            print(f"{repository=}", flush=True)  # TODO: Remove this whole branch?
-            repository = repository.dependency()
         self.repository = repository
 
     def get_by_id(self, organization_id: str) -> OrganizationResponseFlat | None:
         return self.create_organization_response_flat(self.repository.get_by_id(organization_id))
+
+    def get_by_id_full(
+        self, 
+        organization_id: str, 
+        user_service: UserService,
+    ) -> OrganizationResponse | None:
+        return self.create_organization_response(
+            self.repository.get_by_id(organization_id), user_service
+        )
 
     def get_all(self, user_service: UserService) -> list[OrganizationResponse]:
         return [
             self.create_organization_response(organization, user_service)
             for organization in self.repository.get_all()
         ]
- 
+
+    def get_owned_organizations(
+        self, 
+        token: JWToken, 
+        jwt_service: JWTService = JWTService(),
+    ) -> list[OrganizationResponseFlat]:
+        user_mail = jwt_service.get_user_email(token)
+        owned_organizations = self.repository.get_by_owner_email(user_mail)
+        return [
+            self.create_organization_response_flat(org) for org in 
+            owned_organizations
+        ]
+
     def create_organization(
         self, 
         payload: CreateOrganizationPayload, 
@@ -189,7 +215,20 @@ class OrganizationService:
 
     def validate_unique_organization_fields(self, payload: CreateOrganizationPayload) -> None:
         if not self.repository.check_name_unique(payload.name):
-            raise ValueError("The following field contains non-unique value: ['name']")
+            raise exceptions.ValidationException(
+                "The following field contains non-unique value: ['name']"
+            )
+
+    def validate_organization_ownership(
+        self,
+        organization_id: str,
+        token: JWToken,
+        user_service: UserService,
+    ) -> None:
+        organization = self.get_by_id_full(organization_id, user_service)
+        user = user_service.get_current_user(token)
+        if organization.owner.id != user.id:
+            raise exceptions.NotTheOwner
 
     def create_domain_organization_instance(
         self, 
@@ -197,6 +236,9 @@ class OrganizationService:
     ) -> Organization:
         return Organization(name=payload.name, owner_id=payload.owner_id)
 
+    # TODO: Rewrite this and the whole org creation logic (simplify it)
+    # Also rethink relationship between user and organization, it should be a many-to-many
+    # not a many-to-one
     def add_users_to_organization(
         self, 
         organization_id: UUID,
@@ -204,7 +246,7 @@ class OrganizationService:
         user_service: UserService,
     ) -> None:
         if not self.repository.exists_with_id(organization_id):
-            raise ValueError(f"Organization with id {organization_id} doesn't exist.")
+            raise exceptions.OrganizationNotFound
         
         member_ids = [payload.owner_id, *payload.member_ids]
         members = user_service.repository.add_users_to_organization(organization_id, member_ids)
@@ -240,59 +282,90 @@ class OrganizationAccessRequestService:
             get_organization_access_request_repository
         ),
     ) -> None:
-        if isinstance(repository, DependsType):
-            print(f"{repository=}", flush=True)  # TODO: Remove this whole branch?
-            repository = repository.dependency()
         self.repository = repository
 
     def create_organization_access_request(
         self, 
-        payload: CreateOrganizationAccessRequestPayload,
-        user_service: UserService,
+        organization_id: str,
+        token: JWToken,
+        user_service: UserService,  # TODO: Are dependencies like these REALLY ok?
         organization_service: OrganizationService,
     ) -> OrganizationAccessRequestResponse:
-        self.validate_data(payload, user_service, organization_service)
-        access_request = self.create_domain_organization_access_request_instance(payload)
+        requester_id = str(user_service.get_current_user(token, check_user_exists=True).id)
+        self.validate_data(organization_id, requester_id, organization_service, user_service)
+        access_request = self.create_domain_organization_access_request_instance(
+            organization_id, requester_id
+        )
         access_request = self.repository.create(access_request)
         return self.create_organization_access_request_response(access_request)
 
     def create_domain_organization_access_request_instance(
         self, 
-        payload: CreateOrganizationAccessRequestPayload,
+        organization_id: str,
+        requester_id: str,
     ) -> OrganizationAccessRequest:
         return OrganizationAccessRequest(
-            requester_id=payload.requester_id, 
-            organization_id=payload.organization_id
+            requester_id=requester_id, organization_id=organization_id,
         )
 
     def validate_data(
         self, 
-        payload: CreateOrganizationAccessRequestPayload, 
-        user_service: UserService, # TODO: Are dependencies like these REALLY ok?
-        organization_service: OrganizationService,  
+        organization_id: str, 
+        requester_id: str, 
+        organization_service: OrganizationService,
+        user_service: UserService,
     ) -> None:
-        # req_id = str(payload.requester_id)
-        # org_id = str(payload.organization_id)
-        # breakpoint()
-        # exists = self.repository.check_request_uniqueness(req_id, org_id)
-        if not self.repository.check_request_uniqueness(
-            str(payload.requester_id), str(payload.organization_id)
-        ):
-            # TODO: Start here!
-            # Should we raise all exceptions in the same format as in exceptions.py?
-            # The answer is a RESOUNDING yes!
-            raise ValueError(f"The following OrganizationAccessRequest already exists.")
+        if not self.repository.check_request_uniqueness(requester_id, organization_id):
+            raise exceptions.ValidationException(
+                f"The following OrganizationAccessRequest already exists."
+            )
 
+        organization = organization_service.get_by_id_full(organization_id, user_service)
+        if not organization:
+            raise exceptions.OrganizationNotFound
+
+        member_ids = [str(member.id) for member in organization.members]
+        if requester_id in member_ids:
+            raise exceptions.ValidationException(f"You are already a member of this Organization")
+
+        # TODO: Start here/This next: handle this in the "approving access requests" bit
+        # TODO: What if requesting user is already a member of another Organization
         # TODO: What if requesting user is already an owner of another Organization?
         # TODO: What if requesting user is THE ONLY member of another Organization?
 
-        user = user_service.get_by_id(payload.requester_id)
-        if not user:
-            raise ValueError(f"User with id {payload.requester_id} doesn't exist.")
+    def get_pending_requests_for_organization(
+        self, 
+        organization_id: str,
+        token: JWToken, 
+        user_service: UserService,
+        organization_service: OrganizationService,
+    ) -> list[OrganizationAccessRequestResponse]:
+        organization_service.validate_organization_ownership(organization_id, token, user_service)
 
-        organization = organization_service.get_by_id(payload.organization_id)
-        if not organization:
-            raise ValueError(f"Organization with id {payload.organization_id} doesn't exist.")
+        organization_access_requests = self.repository.get_pending_for_organization(organization_id)
+        return [
+            self.create_organization_access_request_response(access_request) for 
+            access_request in organization_access_requests
+        ]
+
+    def process_organization_access_request(
+        self, 
+        organization_access_request_id: str,
+        payload: OrganizationAccessRequestDecisionPayload,
+        token: JWToken, 
+        user_service: UserService,
+        organization_service: OrganizationService,
+    ) -> list[OrganizationAccessRequestResponse]:
+        organization_access_request = self.repository.get_by_id(organization_access_request_id)
+        organization_service.validate_organization_ownership(
+            organization_access_request.organization_id, token, user_service
+        )
+
+        # TODO: This doesn't work, will fix after checking/reworking other views
+        organization_access_request.approved = payload.approve
+        self.repository.update(organization_access_request)
+
+        return self.create_organization_access_request_response(organization_access_request)
 
     def create_organization_access_request_response(
         self, 

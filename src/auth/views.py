@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from uuid import UUID
 
 from .dto import (
-    CreateOrganizationAccessRequestPayload, 
+    OrganizationAccessRequestDecisionPayload,
     CreateOrganizationPayload, 
     CreateUserPayload,
 )
@@ -11,15 +11,22 @@ from .models import User
 from .services import (
     OrganizationAccessRequestService,
     OrganizationService, 
-    UserService, 
-    get_organization_service,
-    get_user_service,
+    UserService,
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 # Technically a view I suppose?
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+
+
+@router.post("/token")
+async def sign_in(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    user_service: UserService = Depends(UserService),
+): 
+    # form_data.username even though the email is expected, this is fine for now
+    return user_service.sign_user_in(form_data.username, form_data.password)
 
 
 @router.get("/me")
@@ -30,17 +37,6 @@ async def user_me(
     return user_service.get_current_user(token)
 
 
-# TODO: Start here, add JWT support
-# Add endpoint for requesting organization access to DB (you'll need another model there)
-@router.post("/token")
-async def sign_in(
-    form_data: OAuth2PasswordRequestForm = Depends(),
-    user_service: UserService = Depends(UserService),
-): 
-    # form_data.username even though the email is expected, this is fine for now
-    return user_service.sign_user_in(form_data.username, form_data.password)
-
-
 @router.post("/users", tags=["users"])
 async def user_create(
     payload: CreateUserPayload, 
@@ -48,6 +44,14 @@ async def user_create(
     organization_service: OrganizationService = Depends(OrganizationService),
 ):
     return service.create_user(payload, organization_service)
+
+
+@router.get("/me/organizations")
+async def organizations_mine(
+    token: str = Depends(oauth2_scheme), 
+    service: OrganizationService = Depends(OrganizationService),
+):
+    return service.get_owned_organizations(token)
 
 
 @router.post("/organizations", tags=["organizations"])
@@ -68,13 +72,51 @@ async def organization_list(
     return service.get_all(user_service)
 
 
-# TODO: WIP: get user email from token, use email instead of id in model, DTOs, repo, services
-@router.post("/organization_access_request/")
-async def organization_request_access(
-    payload: CreateOrganizationAccessRequestPayload,
+@router.get(
+    "/me/organization/{organization_id}/access_requests", tags=["organization_access_requests"]
+)
+async def organization_mine_access_requests(
+    organization_id: str,
     token: str = Depends(oauth2_scheme),
     service: OrganizationAccessRequestService = Depends(OrganizationAccessRequestService),
     user_service: UserService = Depends(UserService),
     organization_service: OrganizationService = Depends(OrganizationService),
 ):
-    return service.create_organization_access_request(payload, user_service, organization_service)
+    return service.get_pending_requests_for_organization(
+        organization_id,
+        token,
+        user_service,
+        organization_service
+    )
+
+
+@router.post(
+    "/organization/{organization_id}/access_requests/", tags=["organization_access_requests"]
+)
+async def organization_request_access_create(
+    organization_id: str,
+    token: str = Depends(oauth2_scheme),
+    service: OrganizationAccessRequestService = Depends(OrganizationAccessRequestService),
+    user_service: UserService = Depends(UserService),
+    organization_service: OrganizationService = Depends(OrganizationService),
+):
+    return service.create_organization_access_request(
+        organization_id, token, user_service, organization_service
+    )
+
+
+@router.post(
+    "/organization_access_requests/{organization_access_request_id}", 
+    tags=["organization_access_requests"]
+)
+async def organization_access_request_process(
+    organization_access_request_id: str,
+    payload: OrganizationAccessRequestDecisionPayload,
+    token: str = Depends(oauth2_scheme),
+    service: OrganizationAccessRequestService = Depends(OrganizationAccessRequestService),
+    user_service: UserService = Depends(UserService),
+    organization_service: OrganizationService = Depends(OrganizationService),
+):
+    return service.process_organization_access_request(
+        organization_access_request_id, payload, token, user_service, organization_service,
+    )

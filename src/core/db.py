@@ -23,16 +23,13 @@ from .config import settings
 LoadStrategy = Union[joinedload, lazyload, subqueryload, selectinload, Relationship]
 
 engine = create_engine(settings.db_conn_url)
-# TODO: Consider expire_on_commit=False? https://docs.sqlalchemy.org/en/20/errors.html#error-bhk3
 Session = sessionmaker(engine)
 
 
-# TODO: Bad class name
 class Base(DeclarativeBase):
     ...
 
 
-# TODO: Should I return those in some DTOs? Well, for now let's just keep them for "internal use"
 class CommonFieldsMixin:
     created_at: Mapped[datetime] = mapped_column(server_default=func.CURRENT_TIMESTAMP())
     updated_at: Mapped[datetime] = mapped_column(
@@ -75,6 +72,19 @@ class BaseRepository:
                 raise e
         return model_instance
 
+    # TODO: will probably need attribute_names?
+    # TODO: this doesn't work due to objects being outside of session scope when modifying the 
+    # fields
+    def update(self, model_instance: Base) -> Base:
+        with self.sessionmaker() as session:
+            try:
+                session.add(model_instance)
+                session.commit()
+            except Exception as e:  # Intentional catch-all - we want a rollback for ALL exceptions
+                session.rollback()
+                raise e
+        return model_instance
+
     def query_with_options(
         self, 
         query: Query, 
@@ -86,7 +96,6 @@ class BaseRepository:
           query = query.options(relationship)
         return query  
 
-    # TODO: needs test
     def exists_with_id(self, id: UUID) -> bool:
         with self.sessionmaker() as session:
             return session.scalar(exists().where(self.model.id == id).select())
@@ -99,12 +108,10 @@ class BaseRepository:
         with self.sessionmaker() as session:
             return session.query(self.model).count()
 
-    # TODO: needs test
     def get_by_id(self, id: UUID, relationships: list[LoadStrategy] | None = None) -> Base:
         with self.sessionmaker() as session:
             return self.query_with_options(session.query(self.model), relationships).get(id)
 
-    # TODO: needs test
     def get_all_by_id(self, ids: list[UUID]) -> list[Base]:
         with self.sessionmaker() as session:
             return session.query(self.model).filter(self.model.id.in_(ids)).all()

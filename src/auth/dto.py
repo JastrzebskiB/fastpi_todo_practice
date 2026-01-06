@@ -51,13 +51,12 @@ class OrganizationResponse(BaseModel):
     members: list[UserResponseFlat]
 
 
-class CreateOrganizationAccessRequestPayload(BaseModel):
-    requester_id: UUID4
-    organization_id: UUID4
-
-
 class OrganizationAccessRequestResponse(BaseModel):
     id: UUID4
     requester_id: UUID4
     organization_id: UUID4
     approved: bool | None
+
+
+class OrganizationAccessRequestDecisionPayload(BaseModel):
+    approve: bool
