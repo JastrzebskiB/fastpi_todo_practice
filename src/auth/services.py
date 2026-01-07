@@ -139,6 +139,19 @@ class UserService:
                 f"The following {field} {contain} non-unique {value}: {duplicate_fields}"
             )
 
+    def validate_all_exist_by_id(self, user_ids: list[str]) -> None:
+        users = self.repository.get_all_by_id(user_ids)
+        missing_ids = set(user_ids) - set([str(user.id) for user in users])
+        missing_ids = sorted(list(missing_ids))
+
+        if missing_ids:
+            singular = len(missing_ids) == 1
+            user = "User" if singular else "Users"
+            id_ = "id" if singular else "ids"
+            raise exceptions.ValidationException(
+                f"{user} with the following {id_}: {missing_ids} not found"
+            )
+
     # Serialization
     def create_user_response(
         self, 
@@ -191,6 +204,23 @@ class OrganizationService:
             repository = repository.dependency()
         self.repository = repository
 
+    def create_organization(
+        self, 
+        payload: CreateOrganizationPayload, 
+        user_service: UserService,
+    ) -> OrganizationResponse:
+        # Validate
+        self.validate_unique_organization_fields(payload)
+        member_ids = self.get_member_ids(payload)
+        user_service.validate_all_exist_by_id(member_ids)
+        # Create
+        organization = self.repository.create_with_members(
+            self.create_domain_organization_instance(payload),
+            member_ids,
+        )
+
+        return self.create_organization_response(organization, user_service)
+
     def add_users_to_organizations_by_id(
         self, 
         users: list[User], 
@@ -230,24 +260,29 @@ class OrganizationService:
             owned_organizations
         ]
 
-    def create_organization(
+    # TODO: Rewrite this and the whole org creation logic (simplify it)
+    # Also rethink relationship between user and organization, it should be a many-to-many
+    # not a many-to-one
+    def add_users_to_organization(
         self, 
+        organization_id: str,
         payload: CreateOrganizationPayload, 
-        user_service: UserService,  # TODO: Are dependencies like this REALLY ok?
-    ) -> OrganizationResponse:
-        self.validate_unique_organization_fields(payload)
-        organization = self.create_domain_organization_instance(payload)
-        organization = self.repository.create(
-            organization,
-            attribute_names=["owner", "members"]
-        )
-        self.add_users_to_organization(organization.id, payload, user_service)
-        # TODO: Ugly that we have to call a SELECT right after creating, this all should be 
-        # a single atomic operation
-        organization = self.repository.get_by_id(str(organization.id))
+        user_service: UserService,
+    ) -> None:
+        if not self.repository.exists_with_id(organization_id):
+            raise exceptions.OrganizationNotFound
+        
+        member_ids = [payload.owner_id, *payload.member_ids]
+        members = user_service.repository.add_users_to_organization(organization_id, member_ids)
 
-        return self.create_organization_response(organization, user_service)
+    # Domain object manipulation 
+    def create_domain_organization_instance(
+        self, 
+        payload: CreateOrganizationPayload,
+    ) -> Organization:
+        return Organization(name=payload.name, owner_id=payload.owner_id)
 
+    # Validation
     def validate_unique_organization_fields(self, payload: CreateOrganizationPayload) -> None:
         if not self.repository.check_name_unique(payload.name):
             raise exceptions.ValidationException(
@@ -265,32 +300,15 @@ class OrganizationService:
         if organization.owner.id != user.id:
             raise exceptions.NotTheOwner
 
-    def create_domain_organization_instance(
-        self, 
-        payload: CreateOrganizationPayload,
-    ) -> Organization:
-        return Organization(name=payload.name, owner_id=payload.owner_id)
-
-    # TODO: Rewrite this and the whole org creation logic (simplify it)
-    # Also rethink relationship between user and organization, it should be a many-to-many
-    # not a many-to-one
-    def add_users_to_organization(
-        self, 
-        organization_id: str,
-        payload: CreateOrganizationPayload, 
-        user_service: UserService,
-    ) -> None:
-        if not self.repository.exists_with_id(organization_id):
-            raise exceptions.OrganizationNotFound
-        
-        member_ids = [payload.owner_id, *payload.member_ids]
-        members = user_service.repository.add_users_to_organization(organization_id, member_ids)
-
+    # Serialization
     def create_organization_response(
         self, 
         organization: Organization, 
-        user_service: UserService, 
+        user_service: UserService = Depends(UserService),
     ) -> OrganizationResponse:
+        if isinstance(user_service, DependsType):
+            user_service = user_service.dependency()
+
         owner = user_service.create_user_response_flat(organization.owner)
         members = [
             user_service.create_user_response_flat(member) 
@@ -308,6 +326,10 @@ class OrganizationService:
         organization: Organization,
     ) -> OrganizationResponseFlat:
         return OrganizationResponseFlat(id=organization.id, name=organization.name)
+
+    # Helpers
+    def get_member_ids(self, payload: CreateOrganizationPayload) -> list[str]:
+        return [str(member_id) for member_id in set([payload.owner_id, *payload.member_ids])]
 
 
 class OrganizationAccessRequestService:

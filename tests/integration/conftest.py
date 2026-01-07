@@ -211,7 +211,7 @@ def create_test_organization(
         session.add(owner)
         session.add(organization)
         session.commit()
-        session.refresh(organization)
+        session.refresh(organization, attribute_names=["owner", "members"])
 
     return organization
 

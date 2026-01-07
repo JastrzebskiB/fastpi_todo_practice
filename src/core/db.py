@@ -17,7 +17,7 @@ from sqlalchemy.orm import (
     sessionmaker,
     subqueryload,
 )
-from sqlalchemy.sql import exists, func
+from sqlalchemy.sql import exists, func, select
 
 from .config import settings
 
@@ -121,4 +121,6 @@ class BaseRepository:
 
     def get_all_by_id(self, ids: list[UUID]) -> list[Base]:
         with self.sessionmaker() as session:
-            return session.query(self.model).filter(self.model.id.in_(ids)).all()
+            return session.scalars(
+                select(self.model).filter(self.model.id.in_(ids))
+            ).all()

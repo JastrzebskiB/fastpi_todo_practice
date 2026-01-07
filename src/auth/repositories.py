@@ -1,5 +1,5 @@
-from sqlalchemy.sql import delete, exists, select, update
 from sqlalchemy.orm import joinedload
+from sqlalchemy.sql import delete, exists, select, update
 
 from ..core import BaseRepository, Session
 from .models import Organization, OrganizationAccessRequest, User
@@ -49,6 +49,32 @@ class UserRepository(BaseRepository):
 class OrganizationRepository(BaseRepository):
     model = Organization
 
+    def check_name_exists(self, name: str) -> bool:
+        with self.sessionmaker() as session:
+            return session.scalar(exists().where(self.model.name == name).select())
+
+    def check_name_unique(self, name: str) -> bool:
+        with self.sessionmaker() as session:
+            return not self.check_name_exists(name)
+
+    def create_with_members(
+        self, 
+        organization: Organization, 
+        member_ids: list[str],
+    ) -> Organization:
+        with self.sessionmaker() as session:
+            try:
+                organization.members = session.scalars(
+                    select(User).where(User.id.in_(member_ids))
+                ).all()
+                session.add(organization)
+                session.commit()
+                session.refresh(organization, attribute_names=["owner", "members"])
+            except Exception as e:
+                session.rollback()
+                raise e
+        return organization
+        
     def add_users_to_organizations_by_id(
         self, 
         users: list[User], 
@@ -92,9 +118,6 @@ class OrganizationRepository(BaseRepository):
                 select(self.model).where(self.model.owner_id == owner_id)
             ).scalars().all()
 
-    def check_name_unique(self, name: str) -> bool:
-        with self.sessionmaker() as session:
-            return not session.scalar(exists().where(self.model.name == name).select())
 
 
 class OrganizationAccessRequestRepository(BaseRepository):
