@@ -28,6 +28,7 @@ async def sign_in(
     return user_service.sign_user_in(form_data)
 
 
+# Users
 @router.post("/users", tags=["users"])
 async def user_create(payload: CreateUserPayload, service: UserService = Depends(UserService)):
     return service.create_user(payload)
@@ -49,8 +50,8 @@ async def user_current_delete(
     user_service.delete_current_user(token)
     return JSONResponse(content={"detail": "Successfully deleted user"})
 
-# ===== LINE ABOVE WHICH WORK IS DONE =====
 
+# Organizations
 @router.post("/organizations", tags=["organizations"])
 async def organization_create(
     payload: CreateOrganizationPayload,
@@ -58,6 +59,18 @@ async def organization_create(
     user_service: UserService = Depends(UserService),
 ):
     return service.create_organization(payload, user_service)
+
+
+@router.get("/organizations", tags=["organizations"])
+async def organization_list(
+    token: str = Depends(oauth2_scheme),
+    service: OrganizationService = Depends(OrganizationService),
+):
+    return service.get_all()
+
+# ===== LINE ABOVE WHICH WORK IS DONE =====
+
+
 
 # ===== LINE ABOVE WHICH WIP =====
 
@@ -67,15 +80,6 @@ async def organizations_mine(
     service: OrganizationService = Depends(OrganizationService),
 ):
     return service.get_owned_organizations(token)
-
-
-@router.get("/organizations", tags=["organizations"])
-async def organization_list(
-    token: str = Depends(oauth2_scheme),
-    service: OrganizationService = Depends(OrganizationService),
-    user_service: UserService = Depends(UserService)
-):
-    return service.get_all(user_service)
 
 
 @router.get(

@@ -330,16 +330,28 @@ class TestOrganizationCreate:
             f"Users with the following ids: ['{owner_id}', '{member_id}'] not found"
         )
 
-@pytest.mark.skip(reason="cleaning up the codebase")
-def test_organization_list(
-    test_organization_service, 
-    test_organization_repository, 
-    test_user_service,
-    test_organization,
-):
-    app.dependency_overrides[OrganizationService] = lambda: test_organization_service
-    app.dependency_overrides[UserService] = lambda: test_user_service
 
-    client = TestClient(app)
-    response = client.get("/auth/organizations")
-    response_json = response.json()
+class TestOrganizationList:
+    def test_success(
+        self,
+        test_organization_service, 
+        test_organization_repository, 
+        test_user_service,
+        test_organization,
+    ):
+        token = generate_jwt(test_organization.owner.email).access_token
+        headers = {"Authorization": f"Bearer {token}"}
+
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+    
+        client = TestClient(app)
+        response = client.get("/auth/organizations", headers=headers)
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert len(response_json) == 1
+        assert response_json[0]["id"] == str(test_organization.id)
+        assert response_json[0]["name"] == test_organization.name
+        assert "owner" not in response_json[0]
+        assert "members" not in response_json[0]

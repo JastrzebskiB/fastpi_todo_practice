@@ -221,6 +221,12 @@ class OrganizationService:
 
         return self.create_organization_response(organization, user_service)
 
+    def get_all(self) -> list[OrganizationResponse]:
+        return [
+            self.create_organization_response_flat(organization)
+            for organization in self.repository.get_all()
+        ]
+
     def add_users_to_organizations_by_id(
         self, 
         users: list[User], 
@@ -241,12 +247,6 @@ class OrganizationService:
         return self.create_organization_response(
             self.repository.get_by_id(organization_id), user_service
         )
-
-    def get_all(self, user_service: UserService) -> list[OrganizationResponse]:
-        return [
-            self.create_organization_response(organization, user_service)
-            for organization in self.repository.get_all()
-        ]
 
     def get_owned_organizations(
         self, 
