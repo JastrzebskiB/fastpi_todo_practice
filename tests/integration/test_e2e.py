@@ -1,5 +1,6 @@
+from datetime import datetime, timedelta
 from http import HTTPStatus
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -108,9 +109,79 @@ class TestUserCreate:
 
         user_count = test_user_repository.get_count()
 
-        assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+        assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
         assert user_count == 1
         assert response_json["detail"] == expected_error
+
+
+class TestGetCurrentUser:
+    def generate_jwt(self, email):
+        return JWTService.create_jwt({"sub": email})
+
+    def test_get_current_user_success(self, test_user_service, test_user_repository, test_user):
+        token = self.generate_jwt(test_user.email).access_token
+        headers = {"Authorization": f"Bearer {token}"}
+
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+        response = client.get("/auth/me", headers=headers)
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert response_json["id"] == str(test_user.id)
+        assert response_json["email"] == test_user.email
+        assert response_json["username"] == test_user.username
+
+    def test_get_current_user_invalid_token(self, test_user_service, test_user_repository):
+        token = "bad.token"
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+        response = client.get("/auth/me", headers=headers)
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.UNAUTHORIZED
+        assert response_json["detail"] == "Could not validate credentials"
+
+    # Not sure if this can happen IRL tbh, even patching this was a bit hard :D
+    @patch("src.auth.services.JWTService")
+    def test_get_current_user_token_encodes_no_mail(
+        self, 
+        jwt_service_patched,
+        test_user_service, 
+        test_user_repository,
+        test_user
+    ):
+        jwt_service_patched.decode_jwt = lambda x: {}
+        token = self.generate_jwt(test_user.email).access_token
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+        response = client.get("/auth/me", headers=headers)
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.UNAUTHORIZED
+        assert response_json["detail"] == "JWT malformed or missing"
+
+    def test_get_current_user_token_user_not_found(
+        self, 
+        test_user_service, 
+        test_user_repository,
+        test_user
+    ):
+        test_user_repository.check_email_exists = lambda x: False
+        token = self.generate_jwt(test_user.email).access_token
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+        response = client.get("/auth/me", headers=headers)
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.NOT_FOUND
+        assert response_json["detail"] == "User not found"
 
 
 @pytest.mark.skip(reason="cleaning up the codebase")

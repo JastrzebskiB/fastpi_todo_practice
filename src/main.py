@@ -14,8 +14,7 @@ app.include_router(auth_router)
 # commented out to speed up the app.
 # @app.middleware("http")
 async def debug_middleware(request: Request, call_next: Callable):
-    # debugged_paths = ["SET THE DEBUGGED PATH HERE"]
-    debugged_paths = ["/auth/token"]
+    debugged_paths = ["SET THE DEBUGGED PATH HERE"]
     if request.url.path not in debugged_paths:
         response = await call_next(request)
         return response

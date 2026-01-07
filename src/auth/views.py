@@ -34,11 +34,11 @@ async def user_create(payload: CreateUserPayload, service: UserService = Depends
 # ===== LINE ABOVE WHICH WORK IS DONE =====
 
 @router.get("/me")
-async def user_me(
+async def user_current(
     token: str = Depends(oauth2_scheme),
     user_service: UserService = Depends(UserService),
 ):
-    return user_service.get_current_user(token)
+    return user_service.get_current_user(token, check_user_exists=True)
 
 # ===== LINE ABOVE WHICH WIP =====
 

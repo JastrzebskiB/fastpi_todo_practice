@@ -29,10 +29,14 @@ from .repositories import (
 
 
 class JWTService:
-    def hash_password(self, password: str) -> str:
+    @staticmethod
+    def hash_password(password: str) -> str:
         return sha256(password.encode()).hexdigest()
 
-    def create_jwt(self, jwt_data: dict) -> JWToken:
+    @staticmethod
+    def create_jwt(jwt_data: dict) -> JWToken:
+        if not jwt_data.get("exp"):
+            jwt_data["exp"] = datetime.now(tz=UTC) + timedelta(minutes=settings.jwt_expiration)
         return JWToken(
             access_token=jwt_encode(
                 jwt_data, 
@@ -41,11 +45,13 @@ class JWTService:
             )
         )
 
-    def decode_jwt(self, token: JWToken) -> dict:
+    @staticmethod
+    def decode_jwt(token: JWToken) -> dict:
         return jwt_decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
 
-    def get_user_email(self, token: JWToken) -> dict:
-        return self.decode_jwt(token).get("sub")
+    @staticmethod
+    def get_user_email(token: JWToken) -> dict:
+        return JWTService.decode_jwt(token).get("sub")
 
 
 class UserService:
@@ -58,7 +64,7 @@ class UserService:
         self, 
         form_data: OAuth2PasswordRequestForm,
         expiration_minutes: timedelta = timedelta(minutes=settings.jwt_expiration),
-        jwt_service: JWTService = JWTService(),
+        jwt_service: JWTService = JWTService,
     ) -> JWToken | None:
         email, password = form_data.username, form_data.password
         user = self.repository.get_by_email_and_password(
@@ -74,11 +80,8 @@ class UserService:
     def create_user(
         self, 
         payload: CreateUserPayload, 
-        jwt_service: JWTService = Depends(get_jwt_service),
+        jwt_service: JWTService = JWTService,
     ) -> UserResponse:
-        if isinstance(jwt_service, DependsType):
-            jwt_service = jwt_service.dependency()
-
         self.validate_unique_user_fields(payload)
         user = self.repository.create(self.create_domain_user_instance(payload, jwt_service))
 
@@ -95,14 +98,11 @@ class UserService:
             password_hash=jwt_service.hash_password(payload.password),
         )
 
-    def get_by_id(self, user_id: str) -> UserResponseFlat | None:
-        return self.create_user_response_flat(self.repository.get_by_id(user_id))
-
     def get_current_user(
         self, 
         token: JWToken, 
         check_user_exists: bool = False,
-        jwt_service: JWTService = JWTService(),
+        jwt_service: JWTService = JWTService,
     ) -> UserResponseFlat | None:
         try:
             email = jwt_service.get_user_email(token)
@@ -111,7 +111,7 @@ class UserService:
 
         if email is None:
             raise exceptions.BadJWTException
-        if check_user_exists and self.repository.check_email_unique(email):
+        if check_user_exists and not self.repository.check_email_exists(email):
             raise exceptions.UserNotFound
         return self.create_user_response_flat(self.repository.get_user_by_email(email))
 
