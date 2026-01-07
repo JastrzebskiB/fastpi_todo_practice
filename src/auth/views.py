@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from uuid import UUID
 
@@ -31,14 +32,32 @@ async def sign_in(
 async def user_create(payload: CreateUserPayload, service: UserService = Depends(UserService)):
     return service.create_user(payload)
 
-# ===== LINE ABOVE WHICH WORK IS DONE =====
 
-@router.get("/me")
+@router.get("/me", tags=["users"])
 async def user_current(
     token: str = Depends(oauth2_scheme),
     user_service: UserService = Depends(UserService),
 ):
     return user_service.get_current_user(token, check_user_exists=True)
+
+
+@router.delete("/me", tags=["users"])
+async def user_current_delete(
+    token: str = Depends(oauth2_scheme),
+    user_service: UserService = Depends(UserService),
+):
+    user_service.delete_current_user(token)
+    return JSONResponse(content={"detail": "Successfully deleted user"})
+
+# ===== LINE ABOVE WHICH WORK IS DONE =====
+
+@router.post("/organizations", tags=["organizations"])
+async def organization_create(
+    payload: CreateOrganizationPayload,
+    service: OrganizationService = Depends(OrganizationService),
+    user_service: UserService = Depends(UserService),
+):
+    return service.create_organization(payload, user_service)
 
 # ===== LINE ABOVE WHICH WIP =====
 
@@ -48,15 +67,6 @@ async def organizations_mine(
     service: OrganizationService = Depends(OrganizationService),
 ):
     return service.get_owned_organizations(token)
-
-
-@router.post("/organizations", tags=["organizations"])
-async def organization_create(
-    payload: CreateOrganizationPayload,
-    service: OrganizationService = Depends(OrganizationService),
-    user_service: UserService = Depends(UserService),
-):
-    return service.create_organization(payload, user_service)
 
 
 @router.get("/organizations", tags=["organizations"])

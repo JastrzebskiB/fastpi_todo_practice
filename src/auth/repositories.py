@@ -1,4 +1,4 @@
-from sqlalchemy.sql import exists, select, update
+from sqlalchemy.sql import delete, exists, select, update
 from sqlalchemy.orm import joinedload
 
 from ..core import BaseRepository, Session
@@ -7,13 +7,6 @@ from .models import Organization, OrganizationAccessRequest, User
 
 class UserRepository(BaseRepository):
     model = User
-
-    def get_by_id(
-        self, 
-        user_id: str,
-        relationships: list = [joinedload(User.owned_organization), joinedload(User.organizations)]
-    ) -> User | None:
-        return super().get_by_id(user_id, relationships=relationships)
 
     def get_by_email_and_password(self, email: str, password_hash: str) -> User:
         with self.sessionmaker() as session:
@@ -42,10 +35,15 @@ class UserRepository(BaseRepository):
 
     def get_user_by_email(self, email: str) -> User:
         with self.sessionmaker() as session:
-            result = session.execute(
-                select(self.model).where(self.model.email == email)
-            ).first()
-            return result[0] if result else None
+            return session.scalar(select(self.model).where(self.model.email == email))
+
+    def delete_user_by_email(self, email: str) -> None:
+        with self.sessionmaker() as session:
+            user = session.scalar(select(self.model).where(self.model.email == email))
+            session.delete(user)
+            session.commit()
+        
+        return None
 
 
 class OrganizationRepository(BaseRepository):

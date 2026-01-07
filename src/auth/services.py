@@ -87,6 +87,28 @@ class UserService:
 
         return self.create_user_response_flat(user)
 
+    def get_current_user(
+        self, 
+        token: JWToken, 
+        check_user_exists: bool = False,
+        jwt_service: JWTService = JWTService,
+    ) -> UserResponseFlat | None:
+        email = self.get_email_from_token(token, jwt_service)
+
+        if check_user_exists and not self.repository.check_email_exists(email):
+            raise exceptions.UserNotFound
+        return self.create_user_response_flat(self.repository.get_user_by_email(email))
+
+    def delete_current_user(self, token: JWToken, jwt_service: JWTService = JWTService) -> None:
+        email = self.get_email_from_token(token, jwt_service)
+
+        if not self.repository.check_email_exists(email):
+            raise exceptions.UserNotFound
+        self.repository.delete_user_by_email(email)
+        
+        return None
+
+    # Domain object manipulation
     def create_domain_user_instance(
         self, 
         payload: CreateUserPayload, 
@@ -97,23 +119,6 @@ class UserService:
             username=payload.username,
             password_hash=jwt_service.hash_password(payload.password),
         )
-
-    def get_current_user(
-        self, 
-        token: JWToken, 
-        check_user_exists: bool = False,
-        jwt_service: JWTService = JWTService,
-    ) -> UserResponseFlat | None:
-        try:
-            email = jwt_service.get_user_email(token)
-        except jwt_exceptions.InvalidTokenError as e:
-            raise exceptions.AuthenticationFailedException
-
-        if email is None:
-            raise exceptions.BadJWTException
-        if check_user_exists and not self.repository.check_email_exists(email):
-            raise exceptions.UserNotFound
-        return self.create_user_response_flat(self.repository.get_user_by_email(email))
 
     # Validation
     def validate_unique_user_fields(self, payload: CreateUserPayload) -> None:
@@ -163,6 +168,18 @@ class UserService:
         if not user:
             return None
         return UserResponseFlat(id=user.id, email=user.email, username=user.username)
+
+    # Helpers
+    def get_email_from_token(self, token: JWToken,  jwt_service: JWTService = JWTService) -> str:
+        try:
+            email = jwt_service.get_user_email(token)
+        except jwt_exceptions.InvalidTokenError as e:
+            raise exceptions.AuthenticationFailedException
+
+        if email is None:
+            raise exceptions.BadJWTException
+        
+        return email
 
 
 class OrganizationService:

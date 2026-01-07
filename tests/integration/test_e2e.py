@@ -14,6 +14,15 @@ from src.auth.views import OrganizationService, UserService
 from src.main import app
 
 
+# Helpers
+def generate_jwt(email):
+    return JWTService.create_jwt({"sub": email})
+
+def hash_password(password):
+    return JWTService.hash_password(password)
+
+
+# Tests
 class TestSignIn:
     def test_success(self, test_user_service, test_user_repository, test_user):
         app.dependency_overrides[UserService] = lambda: test_user_service
@@ -52,7 +61,7 @@ class TestSignIn:
 class TestUserCreate:
     def test_user_create_success(self, test_user_service, test_user_repository):
         password = "pass"
-        password_hashed = JWTService().hash_password(password)
+        password_hashed = hash_password(password)
         app.dependency_overrides[UserService] = lambda: test_user_service
         client = TestClient(app)
 
@@ -115,11 +124,8 @@ class TestUserCreate:
 
 
 class TestGetCurrentUser:
-    def generate_jwt(self, email):
-        return JWTService.create_jwt({"sub": email})
-
     def test_get_current_user_success(self, test_user_service, test_user_repository, test_user):
-        token = self.generate_jwt(test_user.email).access_token
+        token = generate_jwt(test_user.email).access_token
         headers = {"Authorization": f"Bearer {token}"}
 
         app.dependency_overrides[UserService] = lambda: test_user_service
@@ -154,7 +160,7 @@ class TestGetCurrentUser:
         test_user
     ):
         jwt_service_patched.decode_jwt = lambda x: {}
-        token = self.generate_jwt(test_user.email).access_token
+        token = generate_jwt(test_user.email).access_token
         headers = {"Authorization": f"Bearer {token}"}
         
         app.dependency_overrides[UserService] = lambda: test_user_service
@@ -172,12 +178,70 @@ class TestGetCurrentUser:
         test_user
     ):
         test_user_repository.check_email_exists = lambda x: False
-        token = self.generate_jwt(test_user.email).access_token
+        token = generate_jwt(test_user.email).access_token
         headers = {"Authorization": f"Bearer {token}"}
         
         app.dependency_overrides[UserService] = lambda: test_user_service
         client = TestClient(app)
         response = client.get("/auth/me", headers=headers)
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.NOT_FOUND
+        assert response_json["detail"] == "User not found"
+
+
+class TestDeleteUser:
+    # User doesn't exist in db
+    # Email not included in token
+    def test_delete_user_success(self, test_user_service, test_user_repository, test_user): 
+        token = generate_jwt(test_user.email).access_token
+        headers = {"Authorization": f"Bearer {token}"}
+
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+        response = client.delete("/auth/me", headers=headers)
+        response_json = response.json()
+        user_count = test_user_repository.get_count()
+    
+        assert response.status_code == HTTPStatus.OK
+        assert user_count == 0
+        assert response_json["detail"] == "Successfully deleted user"
+
+    @patch("src.auth.services.JWTService")
+    def test_delete_user_token_encodes_no_mail(
+        self, 
+        jwt_service_patched,
+        test_user_service, 
+        test_user_repository,
+        test_user
+    ):
+        jwt_service_patched.decode_jwt = lambda x: {}
+        token = generate_jwt(test_user.email).access_token
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+        response = client.delete("/auth/me", headers=headers)
+        response_json = response.json()
+        user_count = test_user_repository.get_count()
+
+        assert response.status_code == HTTPStatus.UNAUTHORIZED
+        assert user_count == 1
+        assert response_json["detail"] == "JWT malformed or missing"
+
+    def test_delete_current_user_token_user_not_found(
+        self, 
+        test_user_service, 
+        test_user_repository,
+        test_user
+    ):
+        test_user_repository.check_email_exists = lambda x: False
+        token = generate_jwt(test_user.email).access_token
+        headers = {"Authorization": f"Bearer {token}"}
+        
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+        response = client.delete("/auth/me", headers=headers)
         response_json = response.json()
 
         assert response.status_code == HTTPStatus.NOT_FOUND
