@@ -230,3 +230,14 @@ def test_organization(
     yield create_test_organization(TestSession, name)
 
     # Note: cleanup only happens in test_user_repository
+
+
+@fixture(scope="function")
+def test_organization_with_members(
+    TestSession: sessionmaker, 
+    test_users: list[User],
+    name: str = "test_org", 
+):
+    yield create_test_organization(TestSession, name, members=test_users)
+
+    # Note: cleanup only happens in test_user_repository

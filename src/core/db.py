@@ -103,7 +103,7 @@ class BaseRepository:
           query = query.options(relationship)
         return query  
 
-    def exists_with_id(self, id: UUID) -> bool:
+    def exists_with_id(self, id: str) -> bool:
         with self.sessionmaker() as session:
             return session.scalar(exists().where(self.model.id == id).select())
 
@@ -115,11 +115,11 @@ class BaseRepository:
         with self.sessionmaker() as session:
             return session.query(self.model).count()
 
-    def get_by_id(self, id: UUID, relationships: list[LoadStrategy] | None = None) -> Base:
+    def get_by_id(self, id: str, relationships: list[LoadStrategy] | None = None) -> Base:
         with self.sessionmaker() as session:
             return self.query_with_options(session.query(self.model), relationships).get(id)
 
-    def get_all_by_id(self, ids: list[UUID]) -> list[Base]:
+    def get_all_by_id(self, ids: list[str]) -> list[Base]:
         with self.sessionmaker() as session:
             return session.scalars(
                 select(self.model).filter(self.model.id.in_(ids))

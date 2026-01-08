@@ -464,3 +464,242 @@ class TestOrganizationsMine:
 
         assert response.status_code == HTTPStatus.OK
         assert len(response_json) == 2
+
+
+class TestAddOrRemoveMember:
+    def test_add_success(
+        self,
+        test_organization_service,
+        test_user_service,
+        test_organization,
+        test_user,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        payload = {"member_ids": [str(test_user.id)], "add": True}
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/{str(test_organization.id)}/members",
+            headers=generate_auth_headers(test_organization.owner.email),
+            json=payload,
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert len(response_json["members"]) == 2
+        assert str(test_user.id) in [user_json["id"] for user_json in response_json["members"]]
+
+        # Confirm operation is idempotent
+        response = client.post(
+            f"/auth/me/organizations/{str(test_organization.id)}/members",
+            headers=generate_auth_headers(test_organization.owner.email),
+            json=payload,
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert len(response_json["members"]) == 2
+        assert str(test_user.id) in [user_json["id"] for user_json in response_json["members"]]
+
+    def test_add_multiple_success(
+        self,
+        test_organization_service,
+        test_user_service,
+        test_organization,
+        test_users,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        member_ids = [str(user.id) for user in test_users]
+        payload = {"member_ids": member_ids, "add": True}
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/{str(test_organization.id)}/members",
+            headers=generate_auth_headers(test_organization.owner.email),
+            json=payload,
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert len(response_json["members"]) == 3
+        response_member_ids = [user_json["id"] for user_json in response_json["members"]]
+        for member_id in member_ids:
+            assert member_id in response_member_ids
+
+    def test_add_fail_not_the_owner_of_the_org(
+        self,
+        test_organization_service,
+        test_user_service,
+        test_organization,
+        test_user,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        payload = {"member_ids": [str(test_user.id)], "add": True}
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/{str(test_organization.id)}/members",
+            headers=generate_auth_headers(test_user.email),
+            json=payload,
+        )
+
+        assert response.status_code == HTTPStatus.UNAUTHORIZED
+
+    def test_add_fail_user_doesnt_exist(
+        self,
+        test_organization_service,
+        test_user_service,
+        test_organization,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        member_id = "e6358d05-f648-4bc4-a251-08b087c801e8"
+        payload = {"member_ids": [member_id], "add": True}
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/{str(test_organization.id)}/members",
+            headers=generate_auth_headers(test_organization.owner.email),
+            json=payload,
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
+        assert response_json["detail"] == f"User with the following id: ['{member_id}'] not found"
+
+    def test_remove_success(
+        self,
+        test_organization_service,
+        test_user_service,
+        test_organization_with_members,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        member_id_to_remove = str(test_organization_with_members.members[0].id)
+        payload = {"member_ids": [member_id_to_remove], "add": False}
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/{str(test_organization_with_members.id)}/members",
+            headers=generate_auth_headers(test_organization_with_members.owner.email),
+            json=payload,
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert len(response_json["members"]) == 2
+        assert member_id_to_remove not in [
+            user_json["id"] for user_json in response_json["members"]
+        ]
+
+        # Confirm operation is idempotent
+        response = client.post(
+            f"/auth/me/organizations/{str(test_organization_with_members.id)}/members",
+            headers=generate_auth_headers(test_organization_with_members.owner.email),
+            json=payload,
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert len(response_json["members"]) == 2
+        assert member_id_to_remove not in [
+            user_json["id"] for user_json in response_json["members"]
+        ]
+
+    def test_remove_multiple_success(
+        self,
+        test_organization_service,
+        test_user_service,
+        test_organization_with_members,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        member_ids_to_remove = [
+            str(test_organization_with_members.members[0].id),
+            str(test_organization_with_members.members[1].id),
+        ]
+        payload = {"member_ids": member_ids_to_remove, "add": False}
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/{str(test_organization_with_members.id)}/members",
+            headers=generate_auth_headers(test_organization_with_members.owner.email),
+            json=payload,
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert len(response_json["members"]) == 1
+        response_member_ids = [user_json["id"] for user_json in response_json["members"]]
+        for member_id in member_ids_to_remove:
+            assert member_id not in response_member_ids
+
+    def test_remove_fail_not_the_owner_of_the_org(
+        self,
+        test_organization_service,
+        test_user_service,
+        test_organization,
+        test_user,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        payload = {"member_ids": [str(test_user.id)], "add": False}
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/{str(test_organization.id)}/members",
+            headers=generate_auth_headers(test_user.email),
+            json=payload,
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.UNAUTHORIZED
+
+    def test_remove_fail_user_doesnt_exist(
+        self,
+        test_organization_service,
+        test_user_service,
+        test_organization,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        member_id = "e6358d05-f648-4bc4-a251-08b087c801e8"
+        payload = {"member_ids": [member_id], "add": False}
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/{str(test_organization.id)}/members",
+            headers=generate_auth_headers(test_organization.owner.email),
+            json=payload,
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
+        assert response_json["detail"] == f"User with the following id: ['{member_id}'] not found"
+
+    # NOTE: we "fail silently" to keep with the idea of an idempotent operation
+    def test_remove_user_not_a_member_of_organization(
+        self,
+        test_organization_service,
+        test_user_service,
+        test_organization_with_members,
+        test_user,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        member_id = str(test_user.id)
+        payload = {"member_ids": [member_id], "add": False}
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/{str(test_organization_with_members.id)}/members",
+            headers=generate_auth_headers(test_organization_with_members.owner.email),
+            json=payload,
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert member_id not in [user_json["id"] for user_json in response_json["members"]]

@@ -50,6 +50,11 @@ class OrganizationResponse(BaseModel):
     members: list[UserResponseFlat]
 
 
+class ModifyOrganizationMembershipPayload(BaseModel):
+    member_ids: list[UUID4]
+    add: bool
+
+
 # Organization Access Request
 class OrganizationAccessRequestResponse(BaseModel):
     id: UUID4

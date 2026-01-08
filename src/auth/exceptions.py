@@ -15,6 +15,7 @@ NotTheOwner = HTTPException(
     status_code=status.HTTP_403_FORBIDDEN,
     detail="You are not the owner of this Organization",
 )
+# TODO: Consider if those and ValidationException for not founds are needed
 UserNotFound = HTTPException(
     status_code=status.HTTP_404_NOT_FOUND,
     detail="User not found",

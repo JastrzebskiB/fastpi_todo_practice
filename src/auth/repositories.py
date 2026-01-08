@@ -1,4 +1,4 @@
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, make_transient, make_transient_to_detached
 from sqlalchemy.sql import delete, exists, or_, select, update
 
 from ..core import BaseRepository, Session
@@ -49,6 +49,18 @@ class UserRepository(BaseRepository):
 class OrganizationRepository(BaseRepository):
     model = Organization
 
+    def check_organization_with_id_and_owner_id_exists(
+        self, 
+        organization_id: str, 
+        owner_id: str,
+    ) -> Organization:
+        with self.sessionmaker() as session:
+            return session.scalar(
+                exists()
+                .where(self.model.id == organization_id,self.model.owner_id == owner_id)
+                .select()
+            )
+
     def check_name_exists(self, name: str) -> bool:
         with self.sessionmaker() as session:
             return session.scalar(exists().where(self.model.name == name).select())
@@ -97,6 +109,62 @@ class OrganizationRepository(BaseRepository):
                     ),
                 )
             ).unique().all()
+
+    def add_members_to_organization_by_id(
+        self, 
+        member_ids_to_add: list[str], 
+        organization_id: str,
+    ) -> Organization:
+        with self.sessionmaker() as session:
+            try:
+                organization = session.scalar(
+                    select(self.model).where(self.model.id == organization_id)
+                )
+                # Make the operation idempotent: we only add the members who aren't already members
+                # of the organization
+                existing_member_ids = set([str(member.id) for member in organization.members])
+                member_ids_to_add = set(member_ids_to_add)
+                member_ids_to_add = member_ids_to_add - existing_member_ids
+                if member_ids_to_add:
+                    organization.members.extend(
+                        session.scalars(select(User).where(User.id.in_(member_ids_to_add))).all()
+                    )
+                    session.add(organization)
+                    session.commit()
+                session.refresh(organization, attribute_names=["owner", "members"])
+            except Exception as e:
+                session.rollback()
+                raise e
+        return organization
+
+    def remove_members_from_organization_by_id(
+        self, 
+        member_ids_to_remove: list[str], 
+        organization_id: str,
+    ) -> Organization:
+        with self.sessionmaker() as session:
+            try:
+                organization = session.scalar(
+                    select(self.model).where(self.model.id == organization_id)
+                )
+                # Make the operation idempotent: we only add the members who aren't already members
+                # of the organization
+                existing_member_ids = set([str(member.id) for member in organization.members])
+                member_ids_to_remove = set(member_ids_to_remove)
+                member_ids_to_remove = member_ids_to_remove & existing_member_ids
+                if member_ids_to_remove:
+                    members_to_remove = session.scalars(
+                        select(User).where(User.id.in_(member_ids_to_remove))
+                    ).all()
+                    for member in members_to_remove:
+                        organization.members.remove(member)
+                    session.add(organization)
+                    session.commit()
+                session.refresh(organization, attribute_names=["owner", "members"])
+            except Exception as e:
+                session.rollback()
+                raise e
+        return organization
 
     # === LINE ABOVE WHICH WORK IS DONE ===
 

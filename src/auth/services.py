@@ -13,6 +13,7 @@ from .dto import (
     CreateOrganizationPayload, 
     CreateUserPayload,
     JWToken,
+    ModifyOrganizationMembershipPayload,
     OrganizationAccessRequestDecisionPayload,
     OrganizationAccessRequestResponse,
     OrganizationResponse,
@@ -239,6 +240,57 @@ class OrganizationService:
             for organization in organizations
         ]
 
+    def modify_organization_membership(
+        self, 
+        organization_id: str,
+        payload: ModifyOrganizationMembershipPayload,
+        token: str,
+        user_service: UserService 
+    ) -> OrganizationResponse:
+        member_ids = [str(member_id) for member_id in payload.member_ids]
+        add = payload.add
+        return self.modify_organization_membership_by_ids(
+            organization_id, member_ids, add, token, user_service,
+        )
+
+    def modify_organization_membership_by_ids(
+        self, 
+        organization_id: str,
+        member_ids: list[str],
+        add: bool,
+        token: str,
+        user_service: UserService,
+    ) -> OrganizationResponse:
+        # Validate
+        me = user_service.get_current_user(token, check_user_exists=True)
+        if not self.repository.check_organization_with_id_and_owner_id_exists(
+            organization_id, me.id
+        ):
+            raise exceptions.AuthenticationFailedException
+        user_service.validate_all_exist_by_id(member_ids)
+        
+        if add:
+            organization = self.add_members_to_organization_by_id(member_ids, organization_id)
+        # TODO: Start here
+        else:
+            organization = self.remove_members_from_organization_by_id(member_ids, organization_id)
+        
+        return self.create_organization_response(organization)
+
+    def add_members_to_organization_by_id(
+        self, 
+        member_ids: list[str], 
+        organization_id: str,
+    ) -> Organization:
+        return self.repository.add_members_to_organization_by_id(member_ids, organization_id)
+
+    def remove_members_from_organization_by_id(
+        self, 
+        member_ids: list[str],
+        organization_id: str,
+    ) -> Organization:
+        return self.repository.remove_members_from_organization_by_id(member_ids, organization_id)
+
     # === LINE ABOVE WHICH WORK IS DONE ===
     def add_users_to_organizations_by_id(
         self, 
@@ -249,9 +301,7 @@ class OrganizationService:
             users=users, organization_ids=organization_ids
         )
 
-    def get_by_id(self, organization_id: str) -> OrganizationResponseFlat | None:
-        return self.create_organization_response_flat(self.repository.get_by_id(organization_id))
-
+    # TODO: Remove?
     def get_by_id_full(
         self, 
         organization_id: str, 
@@ -260,18 +310,6 @@ class OrganizationService:
         return self.create_organization_response(
             self.repository.get_by_id(organization_id), user_service
         )
-
-    def get_owned_organizations(
-        self, 
-        token: str, 
-        jwt_service: JWTService = JWTService(),
-    ) -> list[OrganizationResponseFlat]:
-        user_mail = jwt_service.get_user_email(token)
-        owned_organizations = self.repository.get_by_owner_email(user_mail)
-        return [
-            self.create_organization_response_flat(org) for org in 
-            owned_organizations
-        ]
 
     # TODO: Rewrite this and the whole org creation logic (simplify it)
     # Also rethink relationship between user and organization, it should be a many-to-many

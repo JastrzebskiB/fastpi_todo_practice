@@ -4,9 +4,10 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from uuid import UUID
 
 from .dto import (
-    OrganizationAccessRequestDecisionPayload,
     CreateOrganizationPayload, 
     CreateUserPayload,
+    ModifyOrganizationMembershipPayload,
+    OrganizationAccessRequestDecisionPayload,
 )
 from .models import User
 from .services import (
@@ -77,7 +78,15 @@ async def organizations_mine(
 
 # ===== LINE ABOVE WHICH WORK IS DONE =====
 
-
+@router.post("/me/organizations/{organization_id}/members")
+async def organization_modify_membership(
+    organization_id: str,
+    payload: ModifyOrganizationMembershipPayload,
+    token: str = Depends(oauth2_scheme),
+    service: OrganizationService = Depends(OrganizationService),
+    user_service: UserService = Depends(UserService),
+):
+    return service.modify_organization_membership(organization_id, payload, token, user_service)
 
 # ===== LINE ABOVE WHICH WIP =====
 
