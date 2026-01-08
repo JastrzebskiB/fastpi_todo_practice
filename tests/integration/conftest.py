@@ -202,11 +202,17 @@ def test_users(
 def create_test_organization(
     TestSession: sessionmaker, 
     name: str, 
-    owner_id: str | None = None,
+    owner: User | None = None,
+    members: list[User] | None = None
 ) -> Organization:
-    if not owner_id:
+    if not owner:
         owner = User(username="owner", email="owner@test.com", password_hash="not_a_hash")
-    organization = Organization(name="test_org", owner=owner, members=[owner])
+    if not members:
+        members = [owner]
+    else:
+        members = [owner, *members]
+
+    organization = Organization(name=name, owner=owner, members=members)
     with TestSession() as session:
         session.add(owner)
         session.add(organization)
@@ -220,7 +226,6 @@ def create_test_organization(
 def test_organization(
     TestSession: sessionmaker, 
     name: str = "test_org", 
-    owner_id: str | None = None,
 ):
     yield create_test_organization(TestSession, name)
 

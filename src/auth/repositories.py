@@ -1,14 +1,14 @@
 from sqlalchemy.orm import joinedload
-from sqlalchemy.sql import delete, exists, select, update
+from sqlalchemy.sql import delete, exists, or_, select, update
 
 from ..core import BaseRepository, Session
-from .models import Organization, OrganizationAccessRequest, User
+from .models import Organization, OrganizationAccessRequest, User, organization_member_join_table
 
 
 class UserRepository(BaseRepository):
     model = User
 
-    def get_by_email_and_password(self, email: str, password_hash: str) -> User:
+    def get_user_by_email_and_password(self, email: str, password_hash: str) -> User:
         with self.sessionmaker() as session:
             return session.scalar(
                 select(self.model).where(
@@ -57,7 +57,7 @@ class OrganizationRepository(BaseRepository):
         with self.sessionmaker() as session:
             return not self.check_name_exists(name)
 
-    def create_with_members(
+    def create_organization_with_members(
         self, 
         organization: Organization, 
         member_ids: list[str],
@@ -74,7 +74,32 @@ class OrganizationRepository(BaseRepository):
                 session.rollback()
                 raise e
         return organization
-        
+
+    def get_all_organizations(
+        self, 
+        relationships: list = [joinedload(Organization.owner), joinedload(Organization.members)]
+    ) -> list[Organization]:
+        return super().get_all(relationships=relationships)
+
+    def get_organizations_with_member_or_owner(self, user_id: str) -> list[Organization]:
+        with self.sessionmaker() as session:
+            return session.scalars(
+                select(self.model)
+                .join(organization_member_join_table, isouter=True)
+                .options(
+                    joinedload(self.model.owner),
+                    joinedload(self.model.members),
+                )
+                .where(
+                    or_(
+                        self.model.owner_id == user_id,
+                        organization_member_join_table.c.member_id == user_id,
+                    ),
+                )
+            ).unique().all()
+
+    # === LINE ABOVE WHICH WORK IS DONE ===
+
     def add_users_to_organizations_by_id(
         self, 
         users: list[User], 
@@ -90,12 +115,6 @@ class OrganizationRepository(BaseRepository):
                 organization.members.extend(users)
                 session.add(organization)
             session.commit()
-
-    def get_all(
-        self, 
-        relationships: list = [joinedload(Organization.owner), joinedload(Organization.members)]
-    ) -> list[Organization]:
-        return super().get_all(relationships=relationships)
 
     def get_by_id(
         self, 

@@ -66,14 +66,18 @@ async def organization_create(
 async def organization_list(service: OrganizationService = Depends(OrganizationService)):
     return service.get_all_organizations()
 
-# ===== LINE ABOVE WHICH WORK IS DONE =====
 
 @router.get("/me/organizations")
-async def organization_mine(
+async def organizations_mine(
     token: str = Depends(oauth2_scheme), 
     service: OrganizationService = Depends(OrganizationService),
+    user_service: UserService = Depends(UserService),
 ):
-    return service.get_organizations_mine(token)
+    return service.get_organizations_mine(token, user_service)
+
+# ===== LINE ABOVE WHICH WORK IS DONE =====
+
+
 
 # ===== LINE ABOVE WHICH WIP =====
 

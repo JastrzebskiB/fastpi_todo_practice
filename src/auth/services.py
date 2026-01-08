@@ -51,6 +51,7 @@ class JWTService:
 
     @staticmethod
     def get_user_email(token: str) -> dict:
+        # TODO: Check if the token is expired lol
         try:
             email = JWTService.decode_jwt(token).get("sub")
         except jwt_exceptions.InvalidTokenError as e:
@@ -60,6 +61,7 @@ class JWTService:
             raise exceptions.BadJWTException
 
         return email
+
 
 class UserService:
     def __init__(self, repository: UserRepository = Depends(UserRepository)) -> None:
@@ -74,7 +76,7 @@ class UserService:
         jwt_service: JWTService = JWTService,
     ) -> JWToken | None:
         email, password = form_data.username, form_data.password
-        user = self.repository.get_by_email_and_password(
+        user = self.repository.get_user_by_email_and_password(
             email, jwt_service.hash_password(password)
         )
         if not user:
@@ -204,7 +206,6 @@ class OrganizationService:
         payload: CreateOrganizationPayload, 
         token: str,
         user_service: UserService,
-        jwt_service: JWTService = JWTService,
     ) -> OrganizationResponse:
         # Validate
         owner = user_service.get_current_user(token, check_user_exists=True)
@@ -212,7 +213,7 @@ class OrganizationService:
         member_ids = self.get_member_ids(owner, payload)
         user_service.validate_all_exist_by_id(member_ids)
         # Create
-        organization = self.repository.create_with_members(
+        organization = self.repository.create_organization_with_members(
             self.create_domain_organization_instance(owner, payload),
             member_ids,
         )
@@ -222,9 +223,23 @@ class OrganizationService:
     def get_all_organizations(self) -> list[OrganizationResponseFlat]:
         return [
             self.create_organization_response_flat(organization)
-            for organization in self.repository.get_all()
+            for organization in self.repository.get_all_organizations(relationships=[])
         ]
 
+    def get_organizations_mine(
+        self, 
+        token: str, 
+        user_service: UserService,
+    ) -> list[OrganizationResponse]:
+        me = user_service.get_current_user(token, check_user_exists=True)
+        organizations = self.repository.get_organizations_with_member_or_owner(me.id)
+
+        return [
+            self.create_organization_response(organization, user_service) 
+            for organization in organizations
+        ]
+
+    # === LINE ABOVE WHICH WORK IS DONE ===
     def add_users_to_organizations_by_id(
         self, 
         users: list[User], 

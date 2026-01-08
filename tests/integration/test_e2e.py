@@ -13,6 +13,8 @@ from src.auth.services import JWTService
 from src.auth.views import OrganizationService, UserService
 from src.main import app
 
+from tests.integration.conftest import create_test_organization
+
 
 # Helpers
 def generate_jwt(email) -> str:
@@ -250,7 +252,7 @@ class TestOrganizationCreate:
         response_json = response.json()
     
         organization_count = test_organization_repository.get_count()
-        organization = test_organization_repository.get_all()[0]
+        organization = test_organization_repository.get_all_organizations()[0]
     
         assert response.status_code == HTTPStatus.OK
         assert organization_count == 1
@@ -348,6 +350,7 @@ class TestOrganizationCreate:
         assert test_organization_repository.get_count() == 0
         assert response_json["detail"] == f"Users with the following ids: {member_ids} not found"
 
+
 class TestOrganizationList:
     def test_success(
         self,
@@ -369,3 +372,95 @@ class TestOrganizationList:
         assert response_json[0]["name"] == test_organization.name
         assert "owner" not in response_json[0]
         assert "members" not in response_json[0]
+
+
+class TestOrganizationsMine:
+    def test_success_owner(
+        self,
+        test_organization_service, 
+        test_organization_repository, 
+        test_user_service,
+        test_organization,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+    
+        client = TestClient(app)
+        response = client.get(
+            "/auth/me/organizations", 
+            headers=generate_auth_headers(test_organization.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert len(response_json) == 1
+        assert response_json[0]["id"] == str(test_organization.id)
+        assert response_json[0]["name"] == test_organization.name
+        assert "owner" in response_json[0]
+        assert response_json[0]["owner"]["id"] == str(test_organization.owner_id) 
+        assert "members" in response_json[0]
+        assert len(response_json[0]["members"]) == 1
+
+    def test_success_member(
+        self,
+        TestSession,
+        test_organization_service, 
+        test_organization_repository, 
+        test_user_service,
+        test_users,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+    
+        owner, member = test_users[0], test_users[1]
+        organization = create_test_organization(
+            TestSession,
+            name="test_org",
+            owner = owner,
+            members=[member],
+        )
+
+        client = TestClient(app)
+        response = client.get(
+            "/auth/me/organizations", 
+            headers=generate_auth_headers(member.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert len(response_json) == 1
+        assert response_json[0]["id"] == str(organization.id)
+        assert response_json[0]["name"] == organization.name
+        assert "owner" in response_json[0]
+        assert response_json[0]["owner"]["id"] == str(owner.id) 
+        assert "members" in response_json[0]
+        assert len(response_json[0]["members"]) == 2
+    
+    def test_success_owner_and_member(
+        self,
+        TestSession,
+        test_organization_service, 
+        test_organization_repository, 
+        test_user_service,
+        test_organization,
+        test_user,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        test_organization_2 = create_test_organization(
+            TestSession,
+            name="test_org_2", 
+            owner=test_user, 
+            members=[test_organization.owner],
+        )
+
+        client = TestClient(app)
+        response = client.get(
+            "/auth/me/organizations", 
+            headers=generate_auth_headers(test_organization.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert len(response_json) == 2
