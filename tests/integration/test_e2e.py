@@ -15,10 +15,14 @@ from src.main import app
 
 
 # Helpers
-def generate_jwt(email):
-    return JWTService.create_jwt({"sub": email})
+def generate_jwt(email) -> str:
+    return JWTService.create_jwt({"sub": email}).access_token
 
-def hash_password(password):
+def generate_auth_headers(email) -> dict:
+    return {"Authorization": f"Bearer {generate_jwt(email)}"}
+
+
+def hash_password(password) -> str:
     return JWTService.hash_password(password)
 
 
@@ -125,12 +129,9 @@ class TestUserCreate:
 
 class TestGetCurrentUser:
     def test_success(self, test_user_service, test_user_repository, test_user):
-        token = generate_jwt(test_user.email).access_token
-        headers = {"Authorization": f"Bearer {token}"}
-
         app.dependency_overrides[UserService] = lambda: test_user_service
         client = TestClient(app)
-        response = client.get("/auth/me", headers=headers)
+        response = client.get("/auth/me", headers=generate_auth_headers(test_user.email))
         response_json = response.json()
 
         assert response.status_code == HTTPStatus.OK
@@ -160,12 +161,10 @@ class TestGetCurrentUser:
         test_user
     ):
         jwt_service_patched.decode_jwt = lambda x: {}
-        token = generate_jwt(test_user.email).access_token
-        headers = {"Authorization": f"Bearer {token}"}
         
         app.dependency_overrides[UserService] = lambda: test_user_service
         client = TestClient(app)
-        response = client.get("/auth/me", headers=headers)
+        response = client.get("/auth/me", headers=generate_auth_headers(test_user.email))
         response_json = response.json()
 
         assert response.status_code == HTTPStatus.UNAUTHORIZED
@@ -173,12 +172,10 @@ class TestGetCurrentUser:
 
     def test_user_not_found(self,  test_user_service,  test_user_repository, test_user):
         test_user_repository.check_email_exists = lambda x: False
-        token = generate_jwt(test_user.email).access_token
-        headers = {"Authorization": f"Bearer {token}"}
         
         app.dependency_overrides[UserService] = lambda: test_user_service
         client = TestClient(app)
-        response = client.get("/auth/me", headers=headers)
+        response = client.get("/auth/me", headers=generate_auth_headers(test_user.email))
         response_json = response.json()
 
         assert response.status_code == HTTPStatus.NOT_FOUND
@@ -187,12 +184,9 @@ class TestGetCurrentUser:
 
 class TestDeleteUser:
     def test_success(self, test_user_service, test_user_repository, test_user): 
-        token = generate_jwt(test_user.email).access_token
-        headers = {"Authorization": f"Bearer {token}"}
-
         app.dependency_overrides[UserService] = lambda: test_user_service
         client = TestClient(app)
-        response = client.delete("/auth/me", headers=headers)
+        response = client.delete("/auth/me", headers=generate_auth_headers(test_user.email))
         response_json = response.json()
         user_count = test_user_repository.get_count()
     
@@ -209,12 +203,10 @@ class TestDeleteUser:
         test_user
     ):
         jwt_service_patched.decode_jwt = lambda x: {}
-        token = generate_jwt(test_user.email).access_token
-        headers = {"Authorization": f"Bearer {token}"}
         
         app.dependency_overrides[UserService] = lambda: test_user_service
         client = TestClient(app)
-        response = client.delete("/auth/me", headers=headers)
+        response = client.delete("/auth/me", headers=generate_auth_headers(test_user.email))
         response_json = response.json()
         user_count = test_user_repository.get_count()
 
@@ -224,12 +216,10 @@ class TestDeleteUser:
 
     def test_user_not_found(self, test_user_service, test_user_repository, test_user):
         test_user_repository.check_email_exists = lambda x: False
-        token = generate_jwt(test_user.email).access_token
-        headers = {"Authorization": f"Bearer {token}"}
         
         app.dependency_overrides[UserService] = lambda: test_user_service
         client = TestClient(app)
-        response = client.delete("/auth/me", headers=headers)
+        response = client.delete("/auth/me", headers=generate_auth_headers(test_user.email))
         response_json = response.json()
 
         assert response.status_code == HTTPStatus.NOT_FOUND
@@ -251,8 +241,12 @@ class TestOrganizationCreate:
     
         owner = test_users[0]
         member = test_users[1]
-        payload = {"name": "test_org", "owner_id": str(owner.id), "member_ids": [str(member.id)]}
-        response = client.post("/auth/organizations", json=payload)
+        payload = {"name": "test_org", "member_ids": [str(member.id)]}
+        response = client.post(
+            "/auth/organizations", 
+            headers=generate_auth_headers(owner.email), 
+            json=payload,
+        )
         response_json = response.json()
     
         organization_count = test_organization_repository.get_count()
@@ -262,7 +256,7 @@ class TestOrganizationCreate:
         assert organization_count == 1
         assert str(organization.id) == response_json["id"]
         assert organization.name == payload["name"] == response_json["name"]
-        assert str(organization.owner.id) == payload["owner_id"] == response_json["owner"]["id"]
+        assert str(organization.owner.id) == str(owner.id) == response_json["owner"]["id"]
         assert organization.owner.email == owner.email == response_json["owner"]["email"]
         assert organization.owner.username == owner.username == response_json["owner"]["username"]
         assert (
@@ -290,20 +284,19 @@ class TestOrganizationCreate:
         app.dependency_overrides[UserService] = lambda: test_user_service
         client = TestClient(app)
     
-        payload = {
-            "name": test_organization.name, 
-            "owner_id": str(test_organization.owner.id), 
-            "member_ids": [],
-        }
-        response = client.post("/auth/organizations", json=payload)
+        payload = {"name": test_organization.name, "member_ids": [],}
+        response = client.post(
+            "/auth/organizations", 
+            headers=generate_auth_headers(test_organization.owner.email), 
+            json=payload,
+        )        
         response_json = response.json()
     
         assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
         assert test_organization_repository.get_count() == 1
         assert response_json["detail"] == "The following field contains non-unique value: ['name']"
 
-
-    def test_missing_users(
+    def test_missing_owner(
         self,
         test_organization_service, 
         test_organization_repository,
@@ -316,20 +309,44 @@ class TestOrganizationCreate:
     
         owner_id = "e6358d05-f648-4bc4-a251-08b087c801e8"
         member_id = "fe17ebee-453d-461d-981e-0a75237069a6"
-        payload = {
-            "name": "test_org", 
-            "owner_id": owner_id,
-            "member_ids": [member_id],
-        }
-        response = client.post("/auth/organizations", json=payload)
+        payload = {"name": "test_org", "member_ids": [member_id]}
+        response = client.post(
+            "/auth/organizations", 
+            headers=generate_auth_headers("bad@mail.com"), 
+            json=payload,
+        )
+        response_json = response.json()
+    
+        assert response.status_code == HTTPStatus.NOT_FOUND
+        assert test_organization_repository.get_count() == 0
+        assert response_json["detail"] == (f"User not found")
+
+    def test_missing_members(
+        self,
+        test_organization_service, 
+        test_organization_repository,
+        test_user_service,
+        test_user_repository,
+        test_user,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+    
+        member_ids = [
+            "e6358d05-f648-4bc4-a251-08b087c801e8", "fe17ebee-453d-461d-981e-0a75237069a6"
+        ]
+        payload = {"name": "test_org", "member_ids": member_ids}
+        response = client.post(
+            "/auth/organizations", 
+            headers=generate_auth_headers(test_user.email), 
+            json=payload,
+        )
         response_json = response.json()
     
         assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
         assert test_organization_repository.get_count() == 0
-        assert response_json["detail"] == (
-            f"Users with the following ids: ['{owner_id}', '{member_id}'] not found"
-        )
-
+        assert response_json["detail"] == f"Users with the following ids: {member_ids} not found"
 
 class TestOrganizationList:
     def test_success(
@@ -339,14 +356,11 @@ class TestOrganizationList:
         test_user_service,
         test_organization,
     ):
-        token = generate_jwt(test_organization.owner.email).access_token
-        headers = {"Authorization": f"Bearer {token}"}
-
         app.dependency_overrides[OrganizationService] = lambda: test_organization_service
         app.dependency_overrides[UserService] = lambda: test_user_service
     
         client = TestClient(app)
-        response = client.get("/auth/organizations", headers=headers)
+        response = client.get("/auth/organizations")
         response_json = response.json()
 
         assert response.status_code == HTTPStatus.OK

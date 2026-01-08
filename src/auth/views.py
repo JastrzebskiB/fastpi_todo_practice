@@ -55,32 +55,27 @@ async def user_current_delete(
 @router.post("/organizations", tags=["organizations"])
 async def organization_create(
     payload: CreateOrganizationPayload,
+    token: str = Depends(oauth2_scheme),
     service: OrganizationService = Depends(OrganizationService),
     user_service: UserService = Depends(UserService),
 ):
-    return service.create_organization(payload, user_service)
+    return service.create_organization(payload, token, user_service)
 
 
 @router.get("/organizations", tags=["organizations"])
-async def organization_list(
-    token: str = Depends(oauth2_scheme),
-    service: OrganizationService = Depends(OrganizationService),
-):
-    return service.get_all()
+async def organization_list(service: OrganizationService = Depends(OrganizationService)):
+    return service.get_all_organizations()
 
 # ===== LINE ABOVE WHICH WORK IS DONE =====
 
-
-
-# ===== LINE ABOVE WHICH WIP =====
-
 @router.get("/me/organizations")
-async def organizations_mine(
+async def organization_mine(
     token: str = Depends(oauth2_scheme), 
     service: OrganizationService = Depends(OrganizationService),
 ):
-    return service.get_owned_organizations(token)
+    return service.get_organizations_mine(token)
 
+# ===== LINE ABOVE WHICH WIP =====
 
 @router.get(
     "/me/organization/{organization_id}/access_requests", tags=["organization_access_requests"]

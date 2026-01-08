@@ -46,13 +46,20 @@ class JWTService:
         )
 
     @staticmethod
-    def decode_jwt(token: JWToken) -> dict:
+    def decode_jwt(token: str) -> dict:
         return jwt_decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
 
     @staticmethod
-    def get_user_email(token: JWToken) -> dict:
-        return JWTService.decode_jwt(token).get("sub")
+    def get_user_email(token: str) -> dict:
+        try:
+            email = JWTService.decode_jwt(token).get("sub")
+        except jwt_exceptions.InvalidTokenError as e:
+            raise exceptions.AuthenticationFailedException
 
+        if email is None:
+            raise exceptions.BadJWTException
+
+        return email
 
 class UserService:
     def __init__(self, repository: UserRepository = Depends(UserRepository)) -> None:
@@ -89,18 +96,18 @@ class UserService:
 
     def get_current_user(
         self, 
-        token: JWToken, 
+        token: str, 
         check_user_exists: bool = False,
         jwt_service: JWTService = JWTService,
     ) -> UserResponseFlat | None:
-        email = self.get_email_from_token(token, jwt_service)
+        email = jwt_service.get_user_email(token)
 
         if check_user_exists and not self.repository.check_email_exists(email):
             raise exceptions.UserNotFound
         return self.create_user_response_flat(self.repository.get_user_by_email(email))
 
-    def delete_current_user(self, token: JWToken, jwt_service: JWTService = JWTService) -> None:
-        email = self.get_email_from_token(token, jwt_service)
+    def delete_current_user(self, token: str, jwt_service: JWTService = JWTService) -> None:
+        email = jwt_service.get_user_email(token)
 
         if not self.repository.check_email_exists(email):
             raise exceptions.UserNotFound
@@ -182,18 +189,6 @@ class UserService:
             return None
         return UserResponseFlat(id=user.id, email=user.email, username=user.username)
 
-    # Helpers
-    def get_email_from_token(self, token: JWToken,  jwt_service: JWTService = JWTService) -> str:
-        try:
-            email = jwt_service.get_user_email(token)
-        except jwt_exceptions.InvalidTokenError as e:
-            raise exceptions.AuthenticationFailedException
-
-        if email is None:
-            raise exceptions.BadJWTException
-        
-        return email
-
 
 class OrganizationService:
     def __init__(
@@ -207,21 +202,24 @@ class OrganizationService:
     def create_organization(
         self, 
         payload: CreateOrganizationPayload, 
+        token: str,
         user_service: UserService,
+        jwt_service: JWTService = JWTService,
     ) -> OrganizationResponse:
         # Validate
+        owner = user_service.get_current_user(token, check_user_exists=True)
         self.validate_unique_organization_fields(payload)
-        member_ids = self.get_member_ids(payload)
+        member_ids = self.get_member_ids(owner, payload)
         user_service.validate_all_exist_by_id(member_ids)
         # Create
         organization = self.repository.create_with_members(
-            self.create_domain_organization_instance(payload),
+            self.create_domain_organization_instance(owner, payload),
             member_ids,
         )
 
         return self.create_organization_response(organization, user_service)
 
-    def get_all(self) -> list[OrganizationResponse]:
+    def get_all_organizations(self) -> list[OrganizationResponseFlat]:
         return [
             self.create_organization_response_flat(organization)
             for organization in self.repository.get_all()
@@ -250,7 +248,7 @@ class OrganizationService:
 
     def get_owned_organizations(
         self, 
-        token: JWToken, 
+        token: str, 
         jwt_service: JWTService = JWTService(),
     ) -> list[OrganizationResponseFlat]:
         user_mail = jwt_service.get_user_email(token)
@@ -278,9 +276,10 @@ class OrganizationService:
     # Domain object manipulation 
     def create_domain_organization_instance(
         self, 
+        owner: UserResponseFlat,
         payload: CreateOrganizationPayload,
     ) -> Organization:
-        return Organization(name=payload.name, owner_id=payload.owner_id)
+        return Organization(name=payload.name, owner_id=owner.id)
 
     # Validation
     def validate_unique_organization_fields(self, payload: CreateOrganizationPayload) -> None:
@@ -292,7 +291,7 @@ class OrganizationService:
     def validate_organization_ownership(
         self,
         organization_id: str,
-        token: JWToken,
+        token: str,
         user_service: UserService,
     ) -> None:
         organization = self.get_by_id_full(organization_id, user_service)
@@ -328,8 +327,12 @@ class OrganizationService:
         return OrganizationResponseFlat(id=organization.id, name=organization.name)
 
     # Helpers
-    def get_member_ids(self, payload: CreateOrganizationPayload) -> list[str]:
-        return [str(member_id) for member_id in set([payload.owner_id, *payload.member_ids])]
+    def get_member_ids(
+        self, 
+        owner: UserResponseFlat, 
+        payload: CreateOrganizationPayload,
+    ) -> list[str]:
+        return [str(member_id) for member_id in set([owner.id, *payload.member_ids])]
 
 
 class OrganizationAccessRequestService:
@@ -344,7 +347,7 @@ class OrganizationAccessRequestService:
     def create_organization_access_request(
         self, 
         organization_id: str,
-        token: JWToken,
+        token: str,
         user_service: UserService,  # TODO: Are dependencies like these REALLY ok?
         organization_service: OrganizationService,
     ) -> OrganizationAccessRequestResponse:
@@ -393,7 +396,7 @@ class OrganizationAccessRequestService:
     def get_pending_requests_for_organization(
         self, 
         organization_id: str,
-        token: JWToken, 
+        token: str, 
         user_service: UserService,
         organization_service: OrganizationService,
     ) -> list[OrganizationAccessRequestResponse]:
@@ -409,7 +412,7 @@ class OrganizationAccessRequestService:
         self, 
         organization_access_request_id: str,
         payload: OrganizationAccessRequestDecisionPayload,
-        token: JWToken, 
+        token: str, 
         user_service: UserService,
         organization_service: OrganizationService,
     ) -> list[OrganizationAccessRequestResponse]:

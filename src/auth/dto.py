@@ -8,6 +8,7 @@ class JWToken(BaseModel):
     access_token: str
 
 
+# User
 class CreateUserPayload(BaseModel):
     email: EmailStr
     username: str
@@ -29,10 +30,10 @@ class UserResponseFlat(BaseModel):
     username: str
 
 
+# Organization
 class CreateOrganizationPayload(BaseModel):
     name: str
 
-    owner_id: UUID4  
     member_ids: list[UUID4]
 
 
@@ -49,6 +50,7 @@ class OrganizationResponse(BaseModel):
     members: list[UserResponseFlat]
 
 
+# Organization Access Request
 class OrganizationAccessRequestResponse(BaseModel):
     id: UUID4
     requester_id: UUID4
