@@ -6,14 +6,20 @@ AuthenticationFailedException = HTTPException(
     detail="Could not validate credentials",
     headers={"WWW-Authenticate": "Bearer"},
 )
+AuthorizationFailedException = HTTPException(
+    status_code=status.HTTP_403_FORBIDDEN,
+    detail="You do not have the permission to perform this action",
+    headers={"WWW-Authenticate": "Bearer"},
+)
 BadJWTException = HTTPException(
     status_code=status.HTTP_401_UNAUTHORIZED,
     detail="JWT malformed or missing",
     headers={"WWW-Authenticate": "Bearer"},
 )
-NotTheOwner = HTTPException(
-    status_code=status.HTTP_403_FORBIDDEN,
-    detail="You are not the owner of this Organization",
+ExpiredJWTException = HTTPException(
+    status_code=status.HTTP_401_UNAUTHORIZED,
+    detail="Authentication token has expired",
+    headers={"WWW-Authenticate": "Bearer"},
 )
 # TODO: Consider if those and ValidationException for not founds are needed
 UserNotFound = HTTPException(

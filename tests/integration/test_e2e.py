@@ -546,7 +546,7 @@ class TestAddOrRemoveMember:
             json=payload,
         )
 
-        assert response.status_code == HTTPStatus.UNAUTHORIZED
+        assert response.status_code == HTTPStatus.FORBIDDEN
 
     def test_add_fail_organization_doesnt_exist(
         self,
@@ -566,7 +566,7 @@ class TestAddOrRemoveMember:
             json=payload,
         )
 
-        assert response.status_code == HTTPStatus.UNAUTHORIZED
+        assert response.status_code == HTTPStatus.FORBIDDEN
 
     def test_add_fail_user_doesnt_exist(
         self,
@@ -676,7 +676,7 @@ class TestAddOrRemoveMember:
         )
         response_json = response.json()
 
-        assert response.status_code == HTTPStatus.UNAUTHORIZED
+        assert response.status_code == HTTPStatus.FORBIDDEN
 
     def test_remove_fail_organization_doesnt_exist(
         self,
@@ -696,7 +696,7 @@ class TestAddOrRemoveMember:
             json=payload,
         )
 
-        assert response.status_code == HTTPStatus.UNAUTHORIZED
+        assert response.status_code == HTTPStatus.FORBIDDEN
 
     def test_remove_fail_user_doesnt_exist(
         self,
@@ -917,7 +917,7 @@ class TestChangeOrganizationOwner:
             headers=generate_auth_headers(test_users[0].email),
         )
 
-        assert response.status_code == HTTPStatus.UNAUTHORIZED
+        assert response.status_code == HTTPStatus.FORBIDDEN
 
     def test_fail_new_owner_doesnt_exist(
         self,
@@ -940,3 +940,81 @@ class TestChangeOrganizationOwner:
         assert response_json["detail"] == (
             f"User with the following id: ['{new_owner_id}'] not found"
         )
+
+
+class TestOrganizationDelete:
+    def test_success(
+        self,
+        test_organization_service,
+        test_user_service,
+        test_organization,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        client = TestClient(app)
+        response = client.delete(
+            f"/auth/me/organizations/{str(test_organization.id)}/",
+            headers=generate_auth_headers(test_organization.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert response_json["detail"] == "Organization deleted successfully"
+
+    def test_fail_organization_has_members(
+        self,
+        test_organization_service,
+        test_user_service,
+        test_organization_with_members,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        client = TestClient(app)
+        response = client.delete(
+            f"/auth/me/organizations/{str(test_organization_with_members.id)}/",
+            headers=generate_auth_headers(test_organization_with_members.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
+        assert response_json["detail"] == (
+            "Cannot delete an organization that still has other members"
+        )
+
+    def test_fail_organization_doesnt_exist(
+        self, 
+        test_organization_service, 
+        test_user_service,
+        test_user,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        organization_id = "e6358d05-f648-4bc4-a251-08b087c801e8"
+        client = TestClient(app)
+        response = client.delete(
+            f"/auth/me/organizations/{organization_id}/",
+            headers=generate_auth_headers(test_user.email),
+        )
+
+        assert response.status_code == HTTPStatus.FORBIDDEN
+
+    def test_fail_not_an_owner_of_organization(
+        self, 
+        test_organization_service, 
+        test_user_service,
+        test_organization_with_members,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        client = TestClient(app)
+        response = client.delete(
+            f"/auth/me/organizations/{str(test_organization_with_members.id)}/",
+            headers=generate_auth_headers(test_organization_with_members.members[0].email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.FORBIDDEN

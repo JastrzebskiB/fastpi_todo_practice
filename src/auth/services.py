@@ -48,17 +48,22 @@ class JWTService:
 
     @staticmethod
     def decode_jwt(token: str) -> dict:
-        return jwt_decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
-
-    @staticmethod
-    def get_user_email(token: str) -> dict:
-        # TODO: Check if the token is expired lol
         try:
-            email = JWTService.decode_jwt(token).get("sub")
+            return jwt_decode(token, settings.JWT_SECRET_KEY, algorithms=[settings.JWT_ALGORITHM])
         except jwt_exceptions.InvalidTokenError as e:
             raise exceptions.AuthenticationFailedException
 
-        if email is None:
+    @staticmethod
+    def validate_decoded_token_is_not_expired(decoded_token: dict) -> None:
+        if (decoded_token["exp"] - datetime.now().timestamp()) <= 0:
+            raise exceptions.ExpiredJWTException
+
+    @staticmethod
+    def get_user_email(token: str) -> dict:
+        decoded_token = JWTService.decode_jwt(token)    
+        JWTService.validate_decoded_token_is_not_expired(decoded_token)
+
+        if (email := decoded_token.get("sub")) is None:
             raise exceptions.BadJWTException
 
         return email
@@ -263,11 +268,7 @@ class OrganizationService:
     ) -> OrganizationResponse:
         # Validate
         me = user_service.get_current_user(token, check_user_exists=True)
-        if not self.repository.check_organization_with_id_and_owner_id_exists(
-            organization_id, me.id
-        ):
-            # TODO: Reconsider: shouldn't this be a OrganizationNotFound?
-            raise exceptions.AuthenticationFailedException
+        self.validate_organization_with_id_and_owner_id_exists(organization_id, me.id)
         user_service.validate_all_exist_by_id(member_ids)
         
         if add:
@@ -315,29 +316,23 @@ class OrganizationService:
         user_service: UserService
     ) -> OrganizationResponse:
         me = user_service.get_current_user(token)
-        if not self.repository.check_organization_with_id_and_owner_id_exists(
-            organization_id, me.id
-        ):
-            # TODO: Reconsider: shouldn't this be a OrganizationNotFound?
-            raise exceptions.AuthenticationFailedException
+        self.validate_organization_with_id_and_owner_id_exists(organization_id, me.id)
         user_service.validate_all_exist_by_id([str(me.id), new_owner_id])
 
         return self.create_organization_response(
-            self.repository.change_organization_owner(organization_id, new_owner_id)
+            self.repository.change_organization_owner(new_owner_id, organization_id)
         )
 
-
-    # === LINE ABOVE WHICH WORK IS DONE ===
-
-    # TODO: Remove?
-    def get_by_id_full(
-        self, 
-        organization_id: str, 
+    def delete_organization(
+        self,
+        organization_id: str,
+        token: str,
         user_service: UserService,
-    ) -> OrganizationResponse | None:
-        return self.create_organization_response(
-            self.repository.get_by_id(organization_id), user_service
-        )
+    ) -> tuple[str, bool]:
+        me = user_service.get_current_user(token)
+        self.validate_organization_with_id_and_owner_id_exists(organization_id, me.id)
+        
+        return self.repository.delete_organization(organization_id)
 
     # Domain object manipulation 
     def create_domain_organization_instance(
@@ -354,16 +349,15 @@ class OrganizationService:
                 "The following field contains non-unique value: ['name']"
             )
 
-    def validate_organization_ownership(
-        self,
-        organization_id: str,
-        token: str,
-        user_service: UserService,
+    def validate_organization_with_id_and_owner_id_exists(
+        self, 
+        organization_id: str, 
+        owner_id: str,
     ) -> None:
-        organization = self.get_by_id_full(organization_id, user_service)
-        user = user_service.get_current_user(token)
-        if organization.owner.id != user.id:
-            raise exceptions.NotTheOwner
+        if not self.repository.check_organization_with_id_and_owner_id_exists(
+            organization_id, owner_id
+        ):
+            raise exceptions.AuthorizationFailedException
 
     # Serialization
     def create_organization_response(
@@ -402,100 +396,100 @@ class OrganizationService:
         return [str(member_id) for member_id in set([owner.id, *payload.member_ids])]
 
 
-class OrganizationAccessRequestService:
-    def __init__(
-        self, 
-        repository: OrganizationAccessRequestRepository = Depends(
-            OrganizationAccessRequestRepository
-        ),
-    ) -> None:
-        self.repository = repository
+# class OrganizationAccessRequestService:
+#     def __init__(
+#         self, 
+#         repository: OrganizationAccessRequestRepository = Depends(
+#             OrganizationAccessRequestRepository
+#         ),
+#     ) -> None:
+#         self.repository = repository
 
-    def create_organization_access_request(
-        self, 
-        organization_id: str,
-        token: str,
-        user_service: UserService,  # TODO: Are dependencies like these REALLY ok?
-        organization_service: OrganizationService,
-    ) -> OrganizationAccessRequestResponse:
-        requester_id = str(user_service.get_current_user(token, check_user_exists=True).id)
-        self.validate_data(organization_id, requester_id, organization_service, user_service)
-        access_request = self.create_domain_organization_access_request_instance(
-            organization_id, requester_id
-        )
-        access_request = self.repository.create(access_request)
-        return self.create_organization_access_request_response(access_request)
+#     def create_organization_access_request(
+#         self, 
+#         organization_id: str,
+#         token: str,
+#         user_service: UserService,  # TODO: Are dependencies like these REALLY ok?
+#         organization_service: OrganizationService,
+#     ) -> OrganizationAccessRequestResponse:
+#         requester_id = str(user_service.get_current_user(token, check_user_exists=True).id)
+#         self.validate_data(organization_id, requester_id, organization_service, user_service)
+#         access_request = self.create_domain_organization_access_request_instance(
+#             organization_id, requester_id
+#         )
+#         access_request = self.repository.create(access_request)
+#         return self.create_organization_access_request_response(access_request)
 
-    def create_domain_organization_access_request_instance(
-        self, 
-        organization_id: str,
-        requester_id: str,
-    ) -> OrganizationAccessRequest:
-        return OrganizationAccessRequest(
-            requester_id=requester_id, organization_id=organization_id,
-        )
+#     def create_domain_organization_access_request_instance(
+#         self, 
+#         organization_id: str,
+#         requester_id: str,
+#     ) -> OrganizationAccessRequest:
+#         return OrganizationAccessRequest(
+#             requester_id=requester_id, organization_id=organization_id,
+#         )
 
-    def validate_data(
-        self, 
-        organization_id: str, 
-        requester_id: str, 
-        organization_service: OrganizationService,
-        user_service: UserService,
-    ) -> None:
-        if not self.repository.check_request_uniqueness(requester_id, organization_id):
-            raise exceptions.ValidationException(
-                f"The following OrganizationAccessRequest already exists."
-            )
+#     def validate_data(
+#         self, 
+#         organization_id: str, 
+#         requester_id: str, 
+#         organization_service: OrganizationService,
+#         user_service: UserService,
+#     ) -> None:
+#         if not self.repository.check_request_uniqueness(requester_id, organization_id):
+#             raise exceptions.ValidationException(
+#                 f"The following OrganizationAccessRequest already exists."
+#             )
 
-        organization = organization_service.get_by_id_full(organization_id, user_service)
-        if not organization:
-            raise exceptions.OrganizationNotFound
+#         organization = organization_service.get_by_id_full(organization_id, user_service)
+#         if not organization:
+#             raise exceptions.OrganizationNotFound
 
-        member_ids = [str(member.id) for member in organization.members]
-        if requester_id in member_ids:
-            raise exceptions.ValidationException(f"You are already a member of this Organization")
+#         member_ids = [str(member.id) for member in organization.members]
+#         if requester_id in member_ids:
+#             raise exceptions.ValidationException(f"You are already a member of this Organization")
 
-    def get_pending_requests_for_organization(
-        self, 
-        organization_id: str,
-        token: str, 
-        user_service: UserService,
-        organization_service: OrganizationService,
-    ) -> list[OrganizationAccessRequestResponse]:
-        organization_service.validate_organization_ownership(organization_id, token, user_service)
+#     def get_pending_requests_for_organization(
+#         self, 
+#         organization_id: str,
+#         token: str, 
+#         user_service: UserService,
+#         organization_service: OrganizationService,
+#     ) -> list[OrganizationAccessRequestResponse]:
+#         organization_service.validate_organization_ownership(organization_id, token, user_service)
 
-        organization_access_requests = self.repository.get_pending_for_organization(organization_id)
-        return [
-            self.create_organization_access_request_response(access_request) for 
-            access_request in organization_access_requests
-        ]
+#         organization_access_requests = self.repository.get_pending_for_organization(organization_id)
+#         return [
+#             self.create_organization_access_request_response(access_request) for 
+#             access_request in organization_access_requests
+#         ]
 
-    def process_organization_access_request(
-        self, 
-        organization_access_request_id: str,
-        payload: OrganizationAccessRequestDecisionPayload,
-        token: str, 
-        user_service: UserService,
-        organization_service: OrganizationService,
-    ) -> list[OrganizationAccessRequestResponse]:
-        organization_access_request = self.repository.get_by_id(organization_access_request_id)
-        organization_service.validate_organization_ownership(
-            organization_access_request.organization_id, token, user_service
-        )
+#     def process_organization_access_request(
+#         self, 
+#         organization_access_request_id: str,
+#         payload: OrganizationAccessRequestDecisionPayload,
+#         token: str, 
+#         user_service: UserService,
+#         organization_service: OrganizationService,
+#     ) -> list[OrganizationAccessRequestResponse]:
+#         organization_access_request = self.repository.get_by_id(organization_access_request_id)
+#         organization_service.validate_organization_ownership(
+#             organization_access_request.organization_id, token, user_service
+#         )
 
-        # TODO: This doesn't work, will fix after checking/reworking other views
-        organization_access_request.approved = payload.approve
-        self.repository.update(organization_access_request)
+#         # TODO: This doesn't work, will fix after checking/reworking other views
+#         organization_access_request.approved = payload.approve
+#         self.repository.update(organization_access_request)
 
-        return self.create_organization_access_request_response(organization_access_request)
+#         return self.create_organization_access_request_response(organization_access_request)
 
-    def create_organization_access_request_response(
-        self, 
-        organization_access_request: OrganizationAccessRequest,
-    ) -> OrganizationAccessRequestResponse:
-        return OrganizationAccessRequestResponse(
-            id=organization_access_request.id,
-            requester_id=organization_access_request.requester_id,
-            organization_id=organization_access_request.organization_id,
-            approved=organization_access_request.approved,
-        )
+#     def create_organization_access_request_response(
+#         self, 
+#         organization_access_request: OrganizationAccessRequest,
+#     ) -> OrganizationAccessRequestResponse:
+#         return OrganizationAccessRequestResponse(
+#             id=organization_access_request.id,
+#             requester_id=organization_access_request.requester_id,
+#             organization_id=organization_access_request.organization_id,
+#             approved=organization_access_request.approved,
+#         )

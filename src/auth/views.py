@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from uuid import UUID
 
 from .dto import (
     CreateOrganizationPayload, 
@@ -11,7 +12,6 @@ from .dto import (
 )
 from .models import User
 from .services import (
-    OrganizationAccessRequestService,
     OrganizationService, 
     UserService,
 )
@@ -97,7 +97,6 @@ async def organization_leave(
 ):
     return service.leave_organization(organization_id, token, user_service)
 
-# ===== LINE ABOVE WHICH WORK IS DONE =====
 
 @router.post("/me/organizations/{organization_id}/owner/{new_owner_id}")
 async def organization_change_owner(
@@ -109,52 +108,63 @@ async def organization_change_owner(
 ):
     return service.change_organization_owner(organization_id, new_owner_id, token, user_service)
 
-# ===== LINE ABOVE WHICH WIP =====
 
-@router.get(
-    "/me/organization/{organization_id}/access_requests", tags=["organization_access_requests"]
-)
-async def organization_mine_access_requests(
+@router.delete("/me/organizations/{organization_id}")
+async def organization_delete(
     organization_id: str,
     token: str = Depends(oauth2_scheme),
-    service: OrganizationAccessRequestService = Depends(OrganizationAccessRequestService),
+    service: OrganizationService = Depends(OrganizationService),
     user_service: UserService = Depends(UserService),
-    organization_service: OrganizationService = Depends(OrganizationService),
 ):
-    return service.get_pending_requests_for_organization(
-        organization_id,
-        token,
-        user_service,
-        organization_service
-    )
-
-@router.post(
-    "/organization/{organization_id}/access_requests/", tags=["organization_access_requests"]
-)
-async def organization_request_access_create(
-    organization_id: str,
-    token: str = Depends(oauth2_scheme),
-    service: OrganizationAccessRequestService = Depends(OrganizationAccessRequestService),
-    user_service: UserService = Depends(UserService),
-    organization_service: OrganizationService = Depends(OrganizationService),
-):
-    return service.create_organization_access_request(
-        organization_id, token, user_service, organization_service
-    )
+    message, deleted = service.delete_organization(organization_id, token, user_service)
+    status_code = status.HTTP_200_OK if deleted else status.HTTP_422_UNPROCESSABLE_CONTENT
+    return JSONResponse(status_code=status_code, content={"detail": message})
 
 
-@router.post(
-    "/organization_access_requests/{organization_access_request_id}", 
-    tags=["organization_access_requests"]
-)
-async def organization_access_request_process(
-    organization_access_request_id: str,
-    payload: OrganizationAccessRequestDecisionPayload,
-    token: str = Depends(oauth2_scheme),
-    service: OrganizationAccessRequestService = Depends(OrganizationAccessRequestService),
-    user_service: UserService = Depends(UserService),
-    organization_service: OrganizationService = Depends(OrganizationService),
-):
-    return service.process_organization_access_request(
-        organization_access_request_id, payload, token, user_service, organization_service,
-    )
+# @router.get(
+#     "/me/organization/{organization_id}/access_requests", tags=["organization_access_requests"]
+# )
+# async def organization_mine_access_requests(
+#     organization_id: str,
+#     token: str = Depends(oauth2_scheme),
+#     service: OrganizationAccessRequestService = Depends(OrganizationAccessRequestService),
+#     user_service: UserService = Depends(UserService),
+#     organization_service: OrganizationService = Depends(OrganizationService),
+# ):
+#     return service.get_pending_requests_for_organization(
+#         organization_id,
+#         token,
+#         user_service,
+#         organization_service
+#     )
+
+# @router.post(
+#     "/organization/{organization_id}/access_requests/", tags=["organization_access_requests"]
+# )
+# async def organization_request_access_create(
+#     organization_id: str,
+#     token: str = Depends(oauth2_scheme),
+#     service: OrganizationAccessRequestService = Depends(OrganizationAccessRequestService),
+#     user_service: UserService = Depends(UserService),
+#     organization_service: OrganizationService = Depends(OrganizationService),
+# ):
+#     return service.create_organization_access_request(
+#         organization_id, token, user_service, organization_service
+#     )
+
+
+# @router.post(
+#     "/organization_access_requests/{organization_access_request_id}", 
+#     tags=["organization_access_requests"]
+# )
+# async def organization_access_request_process(
+#     organization_access_request_id: str,
+#     payload: OrganizationAccessRequestDecisionPayload,
+#     token: str = Depends(oauth2_scheme),
+#     service: OrganizationAccessRequestService = Depends(OrganizationAccessRequestService),
+#     user_service: UserService = Depends(UserService),
+#     organization_service: OrganizationService = Depends(OrganizationService),
+# ):
+#     return service.process_organization_access_request(
+#         organization_access_request_id, payload, token, user_service, organization_service,
+#     )

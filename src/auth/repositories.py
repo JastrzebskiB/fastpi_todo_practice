@@ -199,7 +199,7 @@ class OrganizationRepository(BaseRepository):
 
         return organization
 
-    def change_organization_owner(self, organization_id: str, new_owner_id: str) -> Organization:
+    def change_organization_owner(self, new_owner_id: str, organization_id: str) -> Organization:
         with self.sessionmaker() as session:
             try:
                 organization = session.scalar(
@@ -222,51 +222,42 @@ class OrganizationRepository(BaseRepository):
                 raise e
         return organization
 
-    # === LINE ABOVE WHICH WORK IS DONE ===
-
-    def get_by_id(
-        self, 
-        organization_id: str,
-        relationships: list = [joinedload(Organization.owner), joinedload(Organization.members)]
-    ) -> Organization | None:
-        return super().get_by_id(organization_id, relationships=relationships)
-
-    def get_by_owner_email(self, owner_email: str) -> list[Organization]:
+    def delete_organization(self, organization_id) -> tuple[str, bool]:
         with self.sessionmaker() as session:
-            return session.execute(
-                select(self.model).
-                join(User, self.model.owner_id == User.id).
-                where(User.email == owner_email)
-            ).scalars().all()
-
-    def get_by_owner_id(self, owner_id: str) -> list[Organization]:
-        with self.sessionmaker() as session:
-            return session.execute(
-                select(self.model).where(self.model.owner_id == owner_id)
-            ).scalars().all()
-
-
-
-class OrganizationAccessRequestRepository(BaseRepository):
-    model = OrganizationAccessRequest
-
-    def check_request_uniqueness(self, requester_id: str, organization_id: str) -> bool:
-        with self.sessionmaker() as session:
-            return not session.scalar(
-                exists().where(
-                    self.model.requester_id == requester_id,
-                    self.model.organization_id == organization_id,
-                ).select()
-            )
-
-    def get_pending_for_organization(
-        self, 
-        organization_id: str,
-    ) -> list[OrganizationAccessRequest]:
-        with self.sessionmaker() as session:
-            return session.execute(
-                select(self.model).where(
-                    self.model.organization_id == organization_id,
-                    self.model.approved == None,  # is None doesn't work here!
+            organization = session.scalar(
+                select(self.model)
+                .options(
+                    joinedload(self.model.members)
                 )
-            ).scalars().all()
+                .where(self.model.id == organization_id)
+            )
+            if len(organization.members) > 1:
+                return "Cannot delete an organization that still has other members", False
+            session.delete(organization)
+            session.commit()
+        return "Organization deleted successfully", True
+
+
+# class OrganizationAccessRequestRepository(BaseRepository):
+#     model = OrganizationAccessRequest
+
+#     def check_request_uniqueness(self, requester_id: str, organization_id: str) -> bool:
+#         with self.sessionmaker() as session:
+#             return not session.scalar(
+#                 exists().where(
+#                     self.model.requester_id == requester_id,
+#                     self.model.organization_id == organization_id,
+#                 ).select()
+#             )
+
+#     def get_pending_for_organization(
+#         self, 
+#         organization_id: str,
+#     ) -> list[OrganizationAccessRequest]:
+#         with self.sessionmaker() as session:
+#             return session.execute(
+#                 select(self.model).where(
+#                     self.model.organization_id == organization_id,
+#                     self.model.approved == None,  # is None doesn't work here!
+#                 )
+#             ).scalars().all()
