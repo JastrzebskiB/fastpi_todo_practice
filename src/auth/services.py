@@ -306,6 +306,26 @@ class OrganizationService:
         return self.create_organization_response(
             self.repository.remove_member_from_organization_by_id(str(me.id), organization_id)
         )
+    
+    def change_organization_owner(
+        self,
+        organization_id: str,
+        new_owner_id: str,
+        token: str,
+        user_service: UserService
+    ) -> OrganizationResponse:
+        me = user_service.get_current_user(token)
+        if not self.repository.check_organization_with_id_and_owner_id_exists(
+            organization_id, me.id
+        ):
+            # TODO: Reconsider: shouldn't this be a OrganizationNotFound?
+            raise exceptions.AuthenticationFailedException
+        user_service.validate_all_exist_by_id([str(me.id), new_owner_id])
+
+        return self.create_organization_response(
+            self.repository.change_organization_owner(organization_id, new_owner_id)
+        )
+
 
     # === LINE ABOVE WHICH WORK IS DONE ===
 

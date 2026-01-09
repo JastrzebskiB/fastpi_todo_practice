@@ -99,15 +99,15 @@ async def organization_leave(
 
 # ===== LINE ABOVE WHICH WORK IS DONE =====
 
-@router.post("/me/organization/{organization_id}/owner/{user_id}")
+@router.post("/me/organizations/{organization_id}/owner/{new_owner_id}")
 async def organization_change_owner(
     organization_id: str,
-    user_id: str,
+    new_owner_id: str,
     token: str = Depends(oauth2_scheme),
-    service: OrganizaionServie = Depends(OrganizationService),
+    service: OrganizationService = Depends(OrganizationService),
     user_service: UserService = Depends(UserService),
 ):
-    return None
+    return service.change_organization_owner(organization_id, new_owner_id, token, user_service)
 
 # ===== LINE ABOVE WHICH WIP =====
 

@@ -848,3 +848,95 @@ class TestLeaveOrganization:
         assert str(test_organization.owner_id) in [
             member["id"] for member in response_json["members"]
         ]
+
+
+class TestChangeOrganizationOwner:
+    def test_success_change_owner_to_member_of_organization(
+        self,
+        test_organization_service,
+        test_user_service,
+        test_organization_with_members,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        old_owner_id = str(test_organization_with_members.owner_id)
+        new_owner = test_organization_with_members.members[0]
+        new_owner_id = str(new_owner.id)
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/{str(test_organization_with_members.id)}/owner/{new_owner_id}",
+            headers=generate_auth_headers(test_organization_with_members.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert response_json["owner"]["id"] == new_owner_id
+        response_member_ids = [user_json["id"] for user_json in response_json["members"]]
+        assert old_owner_id in response_member_ids
+        assert new_owner_id in response_member_ids
+
+    def test_success_change_owner_to_user_outside_of_organization(
+        self,
+        test_organization_service,
+        test_user_service,
+        test_organization,
+        test_user,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        old_owner_id = str(test_organization.owner_id)
+        new_owner_id = str(test_user.id)
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/{str(test_organization.id)}/owner/{new_owner_id}",
+            headers=generate_auth_headers(test_organization.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert response_json["owner"]["id"] == new_owner_id
+        response_member_ids = [user_json["id"] for user_json in response_json["members"]]
+        assert old_owner_id in response_member_ids
+        assert new_owner_id in response_member_ids
+
+    def test_fail_organization_doesnt_exist(
+        self,
+        test_organization_service,
+        test_user_service,
+        test_users,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        organization_id = "e6358d05-f648-4bc4-a251-08b087c801e8"
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/{organization_id}/owner/{str(test_users[1].id)}",
+            headers=generate_auth_headers(test_users[0].email),
+        )
+
+        assert response.status_code == HTTPStatus.UNAUTHORIZED
+
+    def test_fail_new_owner_doesnt_exist(
+        self,
+        test_organization_service,
+        test_user_service,
+        test_organization,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        new_owner_id = "e6358d05-f648-4bc4-a251-08b087c801e8"
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/{str(test_organization.id)}/owner/{new_owner_id}",
+            headers=generate_auth_headers(test_organization.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
+        assert response_json["detail"] == (
+            f"User with the following id: ['{new_owner_id}'] not found"
+        )

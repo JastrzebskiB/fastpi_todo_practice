@@ -114,6 +114,7 @@ class OrganizationRepository(BaseRepository):
                 )
             ).unique().all()
 
+    # TODO: Make the logic more modular and reuse it in remove members/leave org/change owner
     def add_members_to_organization_by_id(
         self, 
         member_ids_to_add: list[str], 
@@ -196,6 +197,29 @@ class OrganizationRepository(BaseRepository):
                 raise e
             session.refresh(organization, attribute_names=["owner", "members"])
 
+        return organization
+
+    def change_organization_owner(self, organization_id: str, new_owner_id: str) -> Organization:
+        with self.sessionmaker() as session:
+            try:
+                organization = session.scalar(
+                    select(self.model)
+                    .options(
+                        joinedload(self.model.members)
+                    )
+                    .where(self.model.id == organization_id)
+                )
+                organization.owner_id = new_owner_id
+                if new_owner_id not in [str(member.id) for member in organization.members]:
+                    organization.members.extend(
+                        session.scalars(select(User).where(User.id == new_owner_id)).all()
+                    )
+                session.add(organization)
+                session.commit()
+                session.refresh(organization, attribute_names=["owner", "members"])
+            except Exception as e:
+                session.rollback()
+                raise e
         return organization
 
     # === LINE ABOVE WHICH WORK IS DONE ===
