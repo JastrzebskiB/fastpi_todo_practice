@@ -548,6 +548,26 @@ class TestAddOrRemoveMember:
 
         assert response.status_code == HTTPStatus.UNAUTHORIZED
 
+    def test_add_fail_organization_doesnt_exist(
+        self,
+        test_organization_service,
+        test_user_service,
+        test_user,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        organization_id = "e6358d05-f648-4bc4-a251-08b087c801e8"
+        payload = {"member_ids": [str(test_user.id)], "add": True}
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/{organization_id}/members",
+            headers=generate_auth_headers(test_user.email),
+            json=payload,
+        )
+
+        assert response.status_code == HTTPStatus.UNAUTHORIZED
+
     def test_add_fail_user_doesnt_exist(
         self,
         test_organization_service,
@@ -658,6 +678,26 @@ class TestAddOrRemoveMember:
 
         assert response.status_code == HTTPStatus.UNAUTHORIZED
 
+    def test_remove_fail_organization_doesnt_exist(
+        self,
+        test_organization_service,
+        test_user_service,
+        test_user,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        organization_id = "e6358d05-f648-4bc4-a251-08b087c801e8"
+        payload = {"member_ids": [str(test_user.id)], "add": False}
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/{organization_id}/members",
+            headers=generate_auth_headers(test_user.email),
+            json=payload,
+        )
+
+        assert response.status_code == HTTPStatus.UNAUTHORIZED
+
     def test_remove_fail_user_doesnt_exist(
         self,
         test_organization_service,
@@ -703,3 +743,108 @@ class TestAddOrRemoveMember:
 
         assert response.status_code == HTTPStatus.OK
         assert member_id not in [user_json["id"] for user_json in response_json["members"]]
+
+    # NOTE: We disallow removing self as a member of the organization, there is another endpoint
+    # for that
+    def test_remove_user_not_a_member_of_organization(
+        self,
+        test_organization_service,
+        test_user_service,
+        test_organization_with_members,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        member_id = str(test_organization_with_members.owner.id)
+        payload = {"member_ids": [member_id], "add": False}
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/{str(test_organization_with_members.id)}/members",
+            headers=generate_auth_headers(test_organization_with_members.owner.email),
+            json=payload,
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert member_id in [user_json["id"] for user_json in response_json["members"]]
+
+
+class TestLeaveOrganization:
+    def test_success(
+        self,
+        test_organization_service,
+        test_user_service,
+        test_organization_with_members,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        member_mail = test_organization_with_members.members[0].email
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/{str(test_organization_with_members.id)}/leave",
+            headers=generate_auth_headers(member_mail),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert member_mail not in [member["email"] for member in response_json["members"]]
+
+    def test_fail_organization_doesnt_exist(
+        self,
+        test_organization_service,
+        test_user_service,
+        test_user,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        organization_id = "e6358d05-f648-4bc4-a251-08b087c801e8"
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/{organization_id}/leave",
+            headers=generate_auth_headers(test_user.email),
+        )
+
+        assert response.status_code == HTTPStatus.NOT_FOUND
+
+    def test_not_a_member_of_the_organization(
+        self,
+        test_organization_service,
+        test_user_service,
+        test_organization,
+        test_user,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/{str(test_organization.id)}/leave",
+            headers=generate_auth_headers(test_user.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert test_user.email not in [member["email"] for member in response_json["members"]]
+
+    def test_owner_of_the_organization(
+        self,
+        test_organization_service,
+        test_user_service,
+        test_organization,
+    ):
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/{str(test_organization.id)}/leave",
+            headers=generate_auth_headers(test_organization.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert str(test_organization.owner_id) in [
+            member["id"] for member in response_json["members"]
+        ]

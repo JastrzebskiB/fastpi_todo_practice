@@ -57,9 +57,13 @@ class OrganizationRepository(BaseRepository):
         with self.sessionmaker() as session:
             return session.scalar(
                 exists()
-                .where(self.model.id == organization_id,self.model.owner_id == owner_id)
+                .where(self.model.id == organization_id, self.model.owner_id == owner_id)
                 .select()
             )
+    
+    def check_organization_with_id_exists(self, organization_id: str) -> bool:
+        with self.sessionmaker() as session:
+            return session.scalar(exists().where(self.model.id == organization_id).select())
 
     def check_name_exists(self, name: str) -> bool:
         with self.sessionmaker() as session:
@@ -147,8 +151,7 @@ class OrganizationRepository(BaseRepository):
                 organization = session.scalar(
                     select(self.model).where(self.model.id == organization_id)
                 )
-                # Make the operation idempotent: we only add the members who aren't already members
-                # of the organization
+                # Make the operation idempotent: we only remove actual members
                 existing_member_ids = set([str(member.id) for member in organization.members])
                 member_ids_to_remove = set(member_ids_to_remove)
                 member_ids_to_remove = member_ids_to_remove & existing_member_ids
@@ -166,23 +169,36 @@ class OrganizationRepository(BaseRepository):
                 raise e
         return organization
 
-    # === LINE ABOVE WHICH WORK IS DONE ===
-
-    def add_users_to_organizations_by_id(
+    def remove_member_from_organization_by_id(
         self, 
-        users: list[User], 
-        organization_ids: list[str],
-    ) -> None:
+        member_id: str, 
+        organization_id: str,
+    ) -> Organization:
         with self.sessionmaker() as session:
-            organizations = session.scalars(
-                select(self.model).where(self.model.id.in_(organization_ids))
-            ).all()
-            # TODO: Add test - what happens when you try to add someone to an org they are already 
-            # a member of?
-            for organization in organizations:
-                organization.members.extend(users)
+            organization = session.scalar(
+                select(self.model).where(self.model.id == organization_id)
+            )
+            # Disallow leaving as owner - you can only delete the org if you're the last member left
+            if member_id == str(organization.owner_id):
+                session.refresh(organization, attribute_names=["owner", "members"])
+                return organization
+            try:
+                organization.members.remove(
+                    session.scalar(select(User).where(User.id == member_id))
+                )
                 session.add(organization)
-            session.commit()
+                session.commit()
+            # Idempotent: do not raise exception if trying to leave an org you're not a member of
+            except ValueError:
+                session.rollback()
+            except Exception as e:
+                session.rollback()
+                raise e
+            session.refresh(organization, attribute_names=["owner", "members"])
+
+        return organization
+
+    # === LINE ABOVE WHICH WORK IS DONE ===
 
     def get_by_id(
         self, 

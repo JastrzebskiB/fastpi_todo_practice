@@ -76,7 +76,6 @@ async def organizations_mine(
 ):
     return service.get_organizations_mine(token, user_service)
 
-# ===== LINE ABOVE WHICH WORK IS DONE =====
 
 @router.post("/me/organizations/{organization_id}/members")
 async def organization_modify_membership(
@@ -87,6 +86,28 @@ async def organization_modify_membership(
     user_service: UserService = Depends(UserService),
 ):
     return service.modify_organization_membership(organization_id, payload, token, user_service)
+
+
+@router.post("/me/organizations/{organization_id}/leave")
+async def organization_leave(
+    organization_id: str,
+    token: str = Depends(oauth2_scheme),
+    service: OrganizationService = Depends(OrganizationService),
+    user_service: UserService = Depends(UserService),
+):
+    return service.leave_organization(organization_id, token, user_service)
+
+# ===== LINE ABOVE WHICH WORK IS DONE =====
+
+@router.post("/me/organization/{organization_id}/owner/{user_id}")
+async def organization_change_owner(
+    organization_id: str,
+    user_id: str,
+    token: str = Depends(oauth2_scheme),
+    service: OrganizaionServie = Depends(OrganizationService),
+    user_service: UserService = Depends(UserService),
+):
+    return None
 
 # ===== LINE ABOVE WHICH WIP =====
 
@@ -106,7 +127,6 @@ async def organization_mine_access_requests(
         user_service,
         organization_service
     )
-
 
 @router.post(
     "/organization/{organization_id}/access_requests/", tags=["organization_access_requests"]

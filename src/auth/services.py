@@ -245,7 +245,7 @@ class OrganizationService:
         organization_id: str,
         payload: ModifyOrganizationMembershipPayload,
         token: str,
-        user_service: UserService 
+        user_service: UserService,
     ) -> OrganizationResponse:
         member_ids = [str(member_id) for member_id in payload.member_ids]
         add = payload.add
@@ -266,13 +266,15 @@ class OrganizationService:
         if not self.repository.check_organization_with_id_and_owner_id_exists(
             organization_id, me.id
         ):
+            # TODO: Reconsider: shouldn't this be a OrganizationNotFound?
             raise exceptions.AuthenticationFailedException
         user_service.validate_all_exist_by_id(member_ids)
         
         if add:
             organization = self.add_members_to_organization_by_id(member_ids, organization_id)
-        # TODO: Start here
         else:
+            if (me_id := str(me.id)) in member_ids:
+                member_ids = [member_id for member_id in member_ids if member_id != me_id]
             organization = self.remove_members_from_organization_by_id(member_ids, organization_id)
         
         return self.create_organization_response(organization)
@@ -291,15 +293,21 @@ class OrganizationService:
     ) -> Organization:
         return self.repository.remove_members_from_organization_by_id(member_ids, organization_id)
 
-    # === LINE ABOVE WHICH WORK IS DONE ===
-    def add_users_to_organizations_by_id(
-        self, 
-        users: list[User], 
-        organization_ids: list[str],
-    ) -> None:
-        self.repository.add_users_to_organizations_by_id(
-            users=users, organization_ids=organization_ids
+    def leave_organization(
+        self,
+        organization_id: str,
+        token: str,
+        user_service: UserService,
+    ) -> OrganizationResponse:
+        me = user_service.get_current_user(token, check_user_exists=True)
+        if not self.repository.check_organization_with_id_exists(organization_id):
+            raise exceptions.OrganizationNotFound
+
+        return self.create_organization_response(
+            self.repository.remove_member_from_organization_by_id(str(me.id), organization_id)
         )
+
+    # === LINE ABOVE WHICH WORK IS DONE ===
 
     # TODO: Remove?
     def get_by_id_full(
@@ -310,21 +318,6 @@ class OrganizationService:
         return self.create_organization_response(
             self.repository.get_by_id(organization_id), user_service
         )
-
-    # TODO: Rewrite this and the whole org creation logic (simplify it)
-    # Also rethink relationship between user and organization, it should be a many-to-many
-    # not a many-to-one
-    def add_users_to_organization(
-        self, 
-        organization_id: str,
-        payload: CreateOrganizationPayload, 
-        user_service: UserService,
-    ) -> None:
-        if not self.repository.exists_with_id(organization_id):
-            raise exceptions.OrganizationNotFound
-        
-        member_ids = [payload.owner_id, *payload.member_ids]
-        members = user_service.repository.add_users_to_organization(organization_id, member_ids)
 
     # Domain object manipulation 
     def create_domain_organization_instance(
@@ -380,6 +373,7 @@ class OrganizationService:
         return OrganizationResponseFlat(id=organization.id, name=organization.name)
 
     # Helpers
+    # TODO: Rethink if this is needed or if it should get generalized
     def get_member_ids(
         self, 
         owner: UserResponseFlat, 
@@ -440,11 +434,6 @@ class OrganizationAccessRequestService:
         member_ids = [str(member.id) for member in organization.members]
         if requester_id in member_ids:
             raise exceptions.ValidationException(f"You are already a member of this Organization")
-
-        # TODO: Do this after the refactor: handle this in the "approving access requests" bit
-        # TODO: What if requesting user is already a member of another Organization
-        # TODO: What if requesting user is already an owner of another Organization?
-        # TODO: What if requesting user is THE ONLY member of another Organization?
 
     def get_pending_requests_for_organization(
         self, 
