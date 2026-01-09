@@ -267,6 +267,7 @@ class OrganizationService:
             organization_id, me.id
         ):
             # TODO: Reconsider: shouldn't this be a OrganizationNotFound?
+            # TODO: Make this validation a separate function btw
             raise exceptions.AuthenticationFailedException
         user_service.validate_all_exist_by_id(member_ids)
         
@@ -319,13 +320,29 @@ class OrganizationService:
             organization_id, me.id
         ):
             # TODO: Reconsider: shouldn't this be a OrganizationNotFound?
+            # TODO: Make this validation a separate function btw
             raise exceptions.AuthenticationFailedException
         user_service.validate_all_exist_by_id([str(me.id), new_owner_id])
 
         return self.create_organization_response(
-            self.repository.change_organization_owner(organization_id, new_owner_id)
+            self.repository.change_organization_owner(new_owner_id, organization_id)
         )
 
+    def delete_organization(
+        self,
+        organization_id: str,
+        token: str,
+        user_service: UserService,
+    ) -> tuple[str, bool]:
+        me = user_service.get_current_user(token)
+        if not self.repository.check_organization_with_id_and_owner_id_exists(
+            organization_id, me.id
+        ):
+            # TODO: Reconsider: shouldn't this be a OrganizationNotFound?
+            # TODO: Make this validation a separate function btw
+            raise exceptions.AuthenticationFailedException
+        
+        return self.repository.delete_organization(organization_id)
 
     # === LINE ABOVE WHICH WORK IS DONE ===
 

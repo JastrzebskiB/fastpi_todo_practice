@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from uuid import UUID
 
 from .dto import (
     CreateOrganizationPayload, 
@@ -97,7 +98,6 @@ async def organization_leave(
 ):
     return service.leave_organization(organization_id, token, user_service)
 
-# ===== LINE ABOVE WHICH WORK IS DONE =====
 
 @router.post("/me/organizations/{organization_id}/owner/{new_owner_id}")
 async def organization_change_owner(
@@ -108,6 +108,19 @@ async def organization_change_owner(
     user_service: UserService = Depends(UserService),
 ):
     return service.change_organization_owner(organization_id, new_owner_id, token, user_service)
+
+# ===== LINE ABOVE WHICH WORK IS DONE =====
+
+@router.delete("/me/organizations/{organization_id}")
+async def organization_delete(
+    organization_id: str,
+    token: str = Depends(oauth2_scheme),
+    service: OrganizationService = Depends(OrganizationService),
+    user_service: UserService = Depends(UserService),
+):
+    message, deleted = service.delete_organization(organization_id, token, user_service)
+    status_code = status.HTTP_200_OK if deleted else status.HTTP_422_UNPROCESSABLE_CONTENT
+    return JSONResponse(status_code=status_code, content={"detail": message})
 
 # ===== LINE ABOVE WHICH WIP =====
 

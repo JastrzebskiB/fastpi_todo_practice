@@ -199,7 +199,7 @@ class OrganizationRepository(BaseRepository):
 
         return organization
 
-    def change_organization_owner(self, organization_id: str, new_owner_id: str) -> Organization:
+    def change_organization_owner(self, new_owner_id: str, organization_id: str) -> Organization:
         with self.sessionmaker() as session:
             try:
                 organization = session.scalar(
@@ -221,6 +221,21 @@ class OrganizationRepository(BaseRepository):
                 session.rollback()
                 raise e
         return organization
+
+    def delete_organization(self, organization_id) -> tuple[str, bool]:
+        with self.sessionmaker() as session:
+            organization = session.scalar(
+                select(self.model)
+                .options(
+                    joinedload(self.model.members)
+                )
+                .where(self.model.id == organization_id)
+            )
+            if len(organization.members) > 1:
+                return "Cannot delete an organization that still has other members", False
+            session.delete(organization)
+            session.commit()
+        return "Organization deleted successfully", True
 
     # === LINE ABOVE WHICH WORK IS DONE ===
 
