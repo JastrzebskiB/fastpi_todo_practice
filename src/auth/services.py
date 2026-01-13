@@ -6,7 +6,7 @@ from fastapi.params import Depends as DependsType
 from fastapi.security import OAuth2PasswordRequestForm
 from jwt import decode as jwt_decode, encode as jwt_encode, exceptions as jwt_exceptions
 
-from ..core.config import settings
+from ..core import settings
 from . import exceptions
 from .dependency_injection import get_jwt_service, get_user_service, get_organization_service
 from .dto import (
@@ -396,50 +396,50 @@ class OrganizationService:
         return [str(member_id) for member_id in set([owner.id, *payload.member_ids])]
 
 
-# class OrganizationAccessRequestService:
-#     def __init__(
-#         self, 
-#         repository: OrganizationAccessRequestRepository = Depends(
-#             OrganizationAccessRequestRepository
-#         ),
-#     ) -> None:
-#         self.repository = repository
+class OrganizationAccessRequestService:
+    def __init__(
+        self, 
+        repository: OrganizationAccessRequestRepository = Depends(
+            OrganizationAccessRequestRepository
+        ),
+    ) -> None:
+        if isinstance(repository, DependsType):
+            repository = repository.dependency()
+        self.repository = repository
 
-#     def create_organization_access_request(
-#         self, 
-#         organization_id: str,
-#         token: str,
-#         user_service: UserService,  # TODO: Are dependencies like these REALLY ok?
-#         organization_service: OrganizationService,
-#     ) -> OrganizationAccessRequestResponse:
-#         requester_id = str(user_service.get_current_user(token, check_user_exists=True).id)
-#         self.validate_data(organization_id, requester_id, organization_service, user_service)
-#         access_request = self.create_domain_organization_access_request_instance(
-#             organization_id, requester_id
-#         )
-#         access_request = self.repository.create(access_request)
-#         return self.create_organization_access_request_response(access_request)
+    def request_organization_access(
+        self, 
+        organization_id: str,
+        token: str,
+        user_service: UserService,
+        organization_service: OrganizationService,
+    ) -> OrganizationAccessRequestResponse:
+        requester_id = str(user_service.get_current_user(token, check_user_exists=True).id)
+        self.validate_data(organization_id, requester_id)
+        
+        access_request = self.create_domain_organization_access_request_instance(
+            organization_id, requester_id
+        )
+        access_request = self.repository.create(access_request)
+        return self.create_organization_access_request_response(access_request)
 
-#     def create_domain_organization_access_request_instance(
-#         self, 
-#         organization_id: str,
-#         requester_id: str,
-#     ) -> OrganizationAccessRequest:
-#         return OrganizationAccessRequest(
-#             requester_id=requester_id, organization_id=organization_id,
-#         )
+    # Domain objeect manipulation
+    def create_domain_organization_access_request_instance(
+        self, 
+        organization_id: str,
+        requester_id: str,
+    ) -> OrganizationAccessRequest:
+        return OrganizationAccessRequest(
+            requester_id=requester_id, organization_id=organization_id,
+        )
 
-#     def validate_data(
-#         self, 
-#         organization_id: str, 
-#         requester_id: str, 
-#         organization_service: OrganizationService,
-#         user_service: UserService,
-#     ) -> None:
-#         if not self.repository.check_request_uniqueness(requester_id, organization_id):
-#             raise exceptions.ValidationException(
-#                 f"The following OrganizationAccessRequest already exists."
-#             )
+    # Validation
+    def validate_data(
+        self, 
+        organization_id: str, 
+        requester_id: str, 
+    ) -> None:
+        self.repository.validate_access_request(requester_id, organization_id)
 
 #         organization = organization_service.get_by_id_full(organization_id, user_service)
 #         if not organization:
@@ -483,13 +483,15 @@ class OrganizationService:
 
 #         return self.create_organization_access_request_response(organization_access_request)
 
-#     def create_organization_access_request_response(
-#         self, 
-#         organization_access_request: OrganizationAccessRequest,
-#     ) -> OrganizationAccessRequestResponse:
-#         return OrganizationAccessRequestResponse(
-#             id=organization_access_request.id,
-#             requester_id=organization_access_request.requester_id,
-#             organization_id=organization_access_request.organization_id,
-#             approved=organization_access_request.approved,
-#         )
+    # Serialization
+    def create_organization_access_request_response(
+        self, 
+        organization_access_request: OrganizationAccessRequest,
+    ) -> OrganizationAccessRequestResponse:
+        return OrganizationAccessRequestResponse(
+            id=organization_access_request.id,
+            requester_id=organization_access_request.requester_id,
+            organization_id=organization_access_request.organization_id,
+            approved=organization_access_request.approved,
+            updated_at=organization_access_request.updated_at,
+        )

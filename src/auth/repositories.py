@@ -1,7 +1,10 @@
-from sqlalchemy.orm import joinedload, make_transient, make_transient_to_detached
+from datetime import datetime, timedelta
+
+from sqlalchemy.orm import joinedload
 from sqlalchemy.sql import delete, exists, or_, select, update
 
-from ..core import BaseRepository, Session
+from ..core import BaseRepository, Session, settings
+from . import exceptions
 from .models import Organization, OrganizationAccessRequest, User, organization_member_join_table
 
 
@@ -204,9 +207,7 @@ class OrganizationRepository(BaseRepository):
             try:
                 organization = session.scalar(
                     select(self.model)
-                    .options(
-                        joinedload(self.model.members)
-                    )
+                    .options(joinedload(self.model.members))
                     .where(self.model.id == organization_id)
                 )
                 organization.owner_id = new_owner_id
@@ -238,17 +239,51 @@ class OrganizationRepository(BaseRepository):
         return "Organization deleted successfully", True
 
 
-# class OrganizationAccessRequestRepository(BaseRepository):
-#     model = OrganizationAccessRequest
+class OrganizationAccessRequestRepository(BaseRepository):
+    model = OrganizationAccessRequest
 
-#     def check_request_uniqueness(self, requester_id: str, organization_id: str) -> bool:
-#         with self.sessionmaker() as session:
-#             return not session.scalar(
-#                 exists().where(
-#                     self.model.requester_id == requester_id,
-#                     self.model.organization_id == organization_id,
-#                 ).select()
-#             )
+    def validate_access_request(self, requester_id: str, organization_id: str) -> None:
+        with self.sessionmaker() as session:
+            organization = session.scalar(
+                select(Organization)
+                .options(joinedload(Organization.members))
+                .where(Organization.id == organization_id)
+            )
+            if requester_id in [str(member.id) for member in organization.members]:
+                raise exceptions.ValidationException(
+                    detail="You are already a member of this Organization"
+                )
+            existing_access_request = session.scalar(
+                select(self.model)
+                .where(
+                    self.model.requester_id == requester_id,
+                    self.model.organization_id == organization_id
+                )
+            )
+            if not existing_access_request:
+                return
+
+            updated_recently = (existing_access_request.updated_at 
+                    + timedelta(days=settings.organization_access_request_resubmission)
+                    > datetime.now()
+            )
+
+            if existing_access_request.approved is None:
+                raise exceptions.ValidationException(
+                    detail=(
+                        "You already requested access to this Organization. "
+                        "Your request awaits processing"
+                    )
+                )
+            elif not existing_access_request.approved and updated_recently:
+                updated_at = existing_access_request.updated_at.strftime("%Y-%m-%d %H:%M:%S")
+                raise exceptions.ValidationException(
+                    detail=(
+                        f"You access request for this Organization was denied on {updated_at}. "
+                        f"Wait for at least {settings.organization_access_request_resubmission} "
+                        "days before resubmitting your request."
+                    )
+                ) 
 
 #     def get_pending_for_organization(
 #         self, 

@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel, EmailStr, UUID4
@@ -61,6 +62,7 @@ class OrganizationAccessRequestResponse(BaseModel):
     requester_id: UUID4
     organization_id: UUID4
     approved: bool | None
+    updated_at: datetime
 
 
 class OrganizationAccessRequestDecisionPayload(BaseModel):

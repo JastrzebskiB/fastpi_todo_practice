@@ -10,10 +10,13 @@ from src.auth.exceptions import AuthenticationFailedException
 from src.auth.models import Organization
 from src.auth.repositories import OrganizationRepository, UserRepository
 from src.auth.services import JWTService
-from src.auth.views import OrganizationService, UserService
+from src.auth.views import OrganizationAccessRequestService, OrganizationService, UserService
 from src.main import app
 
-from tests.integration.conftest import create_test_organization
+from tests.integration.conftest import (
+    create_test_organization_accesss_request, 
+    create_test_organization,
+) 
 
 
 # Helpers
@@ -1018,3 +1021,122 @@ class TestOrganizationDelete:
         response_json = response.json()
 
         assert response.status_code == HTTPStatus.FORBIDDEN
+
+
+class TestOrganizationAccessRequestCreate:
+    def test_success(
+        self,
+        test_organization_access_request_service,
+        test_organization_service,
+        test_user_service,
+        test_organization,
+        test_user,
+    ):
+        app.dependency_overrides[OrganizationAccessRequestService] = (
+            lambda: test_organization_access_request_service
+        )
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/organizations/{str(test_organization.id)}/request_access",
+            headers=generate_auth_headers(test_user.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert response_json["requester_id"] == str(test_user.id)
+        assert response_json["organization_id"] == str(test_organization.id)
+        assert response_json["approved"] is None
+        assert response_json["updated_at"] is not None
+
+    def test_fail_already_a_member(
+        self,
+        TestSession,
+        test_organization_access_request_service,
+        test_organization_service,
+        test_user_service,
+        test_organization,
+    ):
+        app.dependency_overrides[OrganizationAccessRequestService] = (
+            lambda: test_organization_access_request_service
+        )
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        access_request = create_test_organization_accesss_request(
+            TestSession, test_organization.owner.id, test_organization.id
+        )
+
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/organizations/{str(test_organization.id)}/request_access",
+            headers=generate_auth_headers(test_organization.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
+        assert response_json["detail"] == "You are already a member of this Organization"
+        
+    def test_fail_request_already_exists(
+        self,
+        TestSession,
+        test_organization_access_request_service,
+        test_organization_service,
+        test_user_service,
+        test_organization,
+        test_user,
+    ):
+        app.dependency_overrides[OrganizationAccessRequestService] = (
+            lambda: test_organization_access_request_service
+        )
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        access_request = create_test_organization_accesss_request(
+            TestSession, test_user.id, test_organization.id
+        )
+
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/organizations/{str(test_organization.id)}/request_access",
+            headers=generate_auth_headers(test_user.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
+        assert response_json["detail"] == (
+            "You already requested access to this Organization. Your request awaits processing"
+        )
+
+    def test_fail_request_denied_recently(
+        self,
+        TestSession,
+        test_organization_access_request_service,
+        test_organization_service,
+        test_user_service,
+        test_organization,
+        test_user,
+    ):
+        app.dependency_overrides[OrganizationAccessRequestService] = (
+            lambda: test_organization_access_request_service
+        )
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        access_request = create_test_organization_accesss_request(
+            TestSession, test_user.id, test_organization.id, approved=False,
+        )
+
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/organizations/{str(test_organization.id)}/request_access",
+            headers=generate_auth_headers(test_user.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
+        assert response_json["detail"].startswith(
+            "You access request for this Organization was denied on"
+        )

@@ -12,6 +12,7 @@ from .dto import (
 )
 from .models import User
 from .services import (
+    OrganizationAccessRequestService,
     OrganizationService, 
     UserService,
 )
@@ -119,6 +120,19 @@ async def organization_delete(
     message, deleted = service.delete_organization(organization_id, token, user_service)
     status_code = status.HTTP_200_OK if deleted else status.HTTP_422_UNPROCESSABLE_CONTENT
     return JSONResponse(status_code=status_code, content={"detail": message})
+
+
+@router.post("/organizations/{organization_id}/request_access")
+async def organization_request_access_create(
+    organization_id: str,
+    token: str = Depends(oauth2_scheme),
+    service: OrganizationAccessRequestService = Depends(OrganizationAccessRequestService),
+    user_service: UserService = Depends(UserService),
+    organization_service: OrganizationService = Depends(OrganizationService),
+):
+    return service.request_organization_access(
+        organization_id, token, user_service, organization_service
+    )
 
 
 # @router.get(

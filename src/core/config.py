@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     JWT_SECRET_KEY: str
     JWT_ALGORITHM: str  # TODO: make this an enum?
     JWT_TOKEN_EXPIRY_MINUTES: int
+    # AUTH
+    ORGANIZATION_ACCESS_REQUEST_RESUBMISSION_LIMIT_DAYS: int
 
     class Config:
         env_file = ".env"
@@ -40,6 +42,10 @@ class Settings(BaseSettings):
     @property
     def jwt_expiration(self):
         return self.JWT_TOKEN_EXPIRY_MINUTES
+    
+    @property
+    def organization_access_request_resubmission(self):
+        return self.ORGANIZATION_ACCESS_REQUEST_RESUBMISSION_LIMIT_DAYS
 
 
 # TODO: Consider using get_settings with @lru_cache instead of initializing settings this way

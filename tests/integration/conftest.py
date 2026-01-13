@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from alembic import command, config
 from pytest import fixture
 from sqlalchemy import create_engine, text
@@ -5,9 +7,13 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import sessionmaker
 
-from src.auth.models import Organization, User
-from src.auth.repositories import OrganizationRepository, UserRepository
-from src.auth.services import OrganizationService, UserService
+from src.auth.models import OrganizationAccessRequest, Organization, User
+from src.auth.repositories import (
+    OrganizationAccessRequestRepository, 
+    OrganizationRepository, 
+    UserRepository,
+)
+from src.auth.services import OrganizationAccessRequestService, OrganizationService, UserService
 
 
 TEST_DB_NAME = "fastapi_todo_test"
@@ -85,6 +91,12 @@ def truncate_organization_table(sessionmaker):
         session.commit()
 
 
+def truncate_organization_access_request_table(sessionmaker):
+    with sessionmaker() as session:
+        session.execute(text("TRUNCATE TABLE organization_access_request RESTART IDENTITY CASCADE"))
+        session.commit()
+
+
 # TODO: Consider changing name to TestSessionmaker?
 @fixture(scope="function")
 def TestSession(test_db: str) -> sessionmaker:
@@ -112,6 +124,17 @@ def test_organization_repository(TestSession) -> OrganizationRepository:
 
 
 @fixture(scope="function")
+def test_organization_access_request_repository(
+    TestSession
+) -> OrganizationAccessRequestRepository:
+    yield OrganizationAccessRequestRepository(TestSession)
+
+    truncate_organization_access_request_table(TestSession)
+    truncate_user_table(TestSession)
+    truncate_organization_table(TestSession)
+
+
+@fixture(scope="function")
 def test_user_service(test_user_repository) -> UserService:
     yield UserService(repository=test_user_repository)
 
@@ -123,6 +146,17 @@ def test_organization_service(test_organization_repository) -> OrganizationServi
     organization_service = OrganizationService()
     organization_service.repository = test_organization_repository
     yield organization_service
+
+    # Cleanup done in test_organization_repository
+
+
+@fixture(scope="function")
+def test_organization_access_request_service(
+    test_organization_access_request_repository
+) -> OrganizationAccessRequestService:
+    organization_access_request_service = OrganizationAccessRequestService()
+    organization_access_request_service.repository = test_organization_access_request_repository
+    yield organization_access_request_service
 
     # Cleanup done in test_organization_repository
 
@@ -241,3 +275,23 @@ def test_organization_with_members(
     yield create_test_organization(TestSession, name, members=test_users)
 
     # Note: cleanup only happens in test_user_repository
+
+
+def create_test_organization_accesss_request(
+    TestSession: sessionmaker, 
+    requester_id: str,
+    organization_id: str,
+    approved: bool | None = None,
+    updated_at: datetime | None = None,
+) -> OrganizationAccessRequest:
+    access_request = OrganizationAccessRequest(
+        requester_id=requester_id, 
+        organization_id=organization_id, 
+        approved=approved,
+        updated_at=updated_at,
+    )
+    with TestSession() as session:
+        session.add(access_request)
+        session.commit()
+
+    return access_request
