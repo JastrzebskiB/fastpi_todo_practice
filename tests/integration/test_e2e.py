@@ -1138,5 +1138,40 @@ class TestOrganizationAccessRequestCreate:
 
         assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
         assert response_json["detail"].startswith(
-            "You access request for this Organization was denied on"
+            "Your access request for this Organization was denied on"
         )
+
+
+class TestMyOrganizationsAccessRequests:
+    def test_success_default(
+        self,
+        TestSession,
+        test_organization_access_request_service,
+        test_user_service,
+        test_organization,
+        test_users,   
+    ):
+        app.dependency_overrides[OrganizationAccessRequestService] = (
+            lambda: test_organization_access_request_service
+        )
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        access_request_1 = create_test_organization_accesss_request(
+            TestSession, test_users[0].id, test_organization.id,
+        )
+        access_request_1 = create_test_organization_accesss_request(
+            TestSession, test_users[1].id, test_organization.id,
+        )
+
+        client = TestClient(app)
+        response = client.get(
+            f"/auth/me/organizations/pending_access_requests",
+            headers=generate_auth_headers(test_organization.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert len(response_json) == 2
+        requester_ids = [access_request["requester_id"] for access_request in response_json]
+        assert str(test_users[0].id) in requester_ids
+        assert str(test_users[1].id) in requester_ids
