@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta
 
 from sqlalchemy.orm import joinedload
+from sqlalchemy.orm.session import Session as SessionType
+from sqlalchemy.sql.elements import BinaryExpression, BooleanClauseList
 from sqlalchemy.sql import delete, exists, or_, select, update
 
 from ..core import BaseRepository, Session, settings
@@ -103,19 +105,26 @@ class OrganizationRepository(BaseRepository):
     def get_organizations_with_member_or_owner(self, user_id: str) -> list[Organization]:
         with self.sessionmaker() as session:
             return session.scalars(
-                select(self.model)
-                .join(organization_member_join_table, isouter=True)
-                .options(
-                    joinedload(self.model.owner),
-                    joinedload(self.model.members),
-                )
-                .where(
-                    or_(
-                        self.model.owner_id == user_id,
-                        organization_member_join_table.c.member_id == user_id,
-                    ),
-                )
-            ).unique().all()
+            select(self.model)
+            .join(organization_member_join_table, isouter=True)
+            .options(
+                joinedload(self.model.owner),
+                joinedload(self.model.members),
+            )
+            .where(
+                or_(
+                    self.model.owner_id == user_id,
+                    organization_member_join_table.c.member_id == user_id,
+                ),
+            )
+        ).unique().all()
+
+    def session_get_organizations_with_owner(
+        self, 
+        session: SessionType, 
+        owner_id: str,
+    ) -> list[Organization]:
+        return session.scalars(select(self.model).where(self.model.owner_id == owner_id)).all()
 
     # TODO: Make the logic more modular and reuse it in remove members/leave org/change owner
     def add_members_to_organization_by_id(
@@ -249,41 +258,65 @@ class OrganizationAccessRequestRepository(BaseRepository):
                 .options(joinedload(Organization.members))
                 .where(Organization.id == organization_id)
             )
+            # Validate that requester is not a member of the Organization yet
             if requester_id in [str(member.id) for member in organization.members]:
                 raise exceptions.ValidationException(
                     detail="You are already a member of this Organization"
                 )
-            existing_access_request = session.scalar(
+            # Get all existing unprocessed/unapproved access requests
+            existing_access_requests = session.scalars(
                 select(self.model)
                 .where(
                     self.model.requester_id == requester_id,
-                    self.model.organization_id == organization_id
+                    self.model.organization_id == organization_id,
+                    self.model.approved.is_not(True),
                 )
-            )
-            if not existing_access_request:
+            ).all()
+
+            if not existing_access_requests:
                 return
 
-            updated_recently = (existing_access_request.updated_at 
-                    + timedelta(days=settings.organization_access_request_resubmission)
-                    > datetime.now()
-            )
-
-            if existing_access_request.approved is None:
-                raise exceptions.ValidationException(
-                    detail=(
-                        "You already requested access to this Organization. "
-                        "Your request awaits processing"
-                    )
+            for access_request in existing_access_requests:
+                updated_recently = (access_request.updated_at 
+                        + timedelta(days=settings.organization_access_request_resubmission)
+                        > datetime.now()
                 )
-            elif not existing_access_request.approved and updated_recently:
-                updated_at = existing_access_request.updated_at.strftime("%Y-%m-%d %H:%M:%S")
-                raise exceptions.ValidationException(
-                    detail=(
-                        f"You access request for this Organization was denied on {updated_at}. "
-                        f"Wait for at least {settings.organization_access_request_resubmission} "
-                        "days before resubmitting your request."
+    
+                # Validate no existing access request is pending processing
+                if access_request.approved is None:
+                    raise exceptions.ValidationException(
+                        detail=(
+                            "You already requested access to this Organization. "
+                            "Your request awaits processing"
+                        )
                     )
-                ) 
+                # Validate no existing access request was denied in the last week (default value)
+                elif not access_request.approved and updated_recently:
+                    updated_at = access_request.updated_at.strftime("%Y-%m-%d %H:%M:%S")
+                    raise exceptions.ValidationException(
+                        detail=(
+                            "Your access request for this Organization was denied on "
+                            f"{updated_at}. Wait for at least "
+                            f"{settings.organization_access_request_resubmission} days before "
+                            "resubmitting your request."
+                        )
+                    ) 
+
+    def get_access_requests_for_owned_organizations_with_status(
+        self, 
+        user_id: str, 
+        status_where_param: BinaryExpression | BooleanClauseList,
+    ) -> list[OrganizationAccessRequest]:
+        with self.sessionmaker() as session:
+            # TODO: Should the repository be passed here as a dependency to loosen the coupling?
+            organizations = OrganizationRepository().session_get_organizations_with_owner(
+                session, user_id
+            )
+            organization_ids = [str(organization.id) for organization in organizations]
+
+            where_args = (self.model.organization_id.in_(organization_ids), status_where_param)
+
+            return session.scalars(select(self.model).where(*where_args)).all()
 
 #     def get_pending_for_organization(
 #         self, 

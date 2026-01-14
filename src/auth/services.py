@@ -22,6 +22,7 @@ from .dto import (
     UserResponseFlat,
 )
 from .models import OrganizationAccessRequest, Organization, User
+from .query_params import RequestAccessStatus
 from .repositories import (
     OrganizationRepository,
     OrganizationAccessRequestRepository,
@@ -423,6 +424,18 @@ class OrganizationAccessRequestService:
         access_request = self.repository.create(access_request)
         return self.create_organization_access_request_response(access_request)
 
+    def get_pending_requests_for_owned_organizations(
+        self,
+        token: str,
+        user_service: UserService,
+        status: RequestAccessStatus,
+    ) -> list[OrganizationAccessRequestResponse]:
+        me = user_service.get_current_user(token, check_user_exists=True)
+        requests = self.repository.get_access_requests_for_owned_organizations_with_status(
+            str(me.id), status.where_param
+        )
+        return [self.create_organization_access_request_response(request) for request in requests]
+
     # Domain objeect manipulation
     def create_domain_organization_access_request_instance(
         self, 
@@ -441,13 +454,6 @@ class OrganizationAccessRequestService:
     ) -> None:
         self.repository.validate_access_request(requester_id, organization_id)
 
-#         organization = organization_service.get_by_id_full(organization_id, user_service)
-#         if not organization:
-#             raise exceptions.OrganizationNotFound
-
-#         member_ids = [str(member.id) for member in organization.members]
-#         if requester_id in member_ids:
-#             raise exceptions.ValidationException(f"You are already a member of this Organization")
 
 #     def get_pending_requests_for_organization(
 #         self, 

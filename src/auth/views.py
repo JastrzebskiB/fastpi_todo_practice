@@ -11,6 +11,7 @@ from .dto import (
     OrganizationAccessRequestDecisionPayload,
 )
 from .models import User
+from .query_params import RequestAccessStatus
 from .services import (
     OrganizationAccessRequestService,
     OrganizationService, 
@@ -123,7 +124,7 @@ async def organization_delete(
 
 
 @router.post("/organizations/{organization_id}/request_access")
-async def organization_request_access_create(
+async def organization_access_request_create(
     organization_id: str,
     token: str = Depends(oauth2_scheme),
     service: OrganizationAccessRequestService = Depends(OrganizationAccessRequestService),
@@ -134,6 +135,15 @@ async def organization_request_access_create(
         organization_id, token, user_service, organization_service
     )
 
+
+@router.get("/me/organizations/pending_access_requests")
+async def my_organizations_access_requests(
+    token: str = Depends(oauth2_scheme),
+    service: OrganizationAccessRequestService = Depends(OrganizationAccessRequestService),
+    user_service: UserService = Depends(UserService),
+    status: RequestAccessStatus = RequestAccessStatus.UNPROCESSED,
+):
+    return service.get_pending_requests_for_owned_organizations(token, user_service, status)
 
 # @router.get(
 #     "/me/organization/{organization_id}/access_requests", tags=["organization_access_requests"]
