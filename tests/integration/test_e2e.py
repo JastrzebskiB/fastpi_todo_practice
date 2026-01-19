@@ -14,7 +14,7 @@ from src.auth.views import OrganizationAccessRequestService, OrganizationService
 from src.main import app
 
 from tests.integration.conftest import (
-    create_test_organization_accesss_request, 
+    create_test_organization_access_request, 
     create_test_organization,
 ) 
 
@@ -1065,7 +1065,7 @@ class TestOrganizationAccessRequestCreate:
         app.dependency_overrides[OrganizationService] = lambda: test_organization_service
         app.dependency_overrides[UserService] = lambda: test_user_service
 
-        access_request = create_test_organization_accesss_request(
+        access_request = create_test_organization_access_request(
             TestSession, test_organization.owner.id, test_organization.id
         )
 
@@ -1094,7 +1094,7 @@ class TestOrganizationAccessRequestCreate:
         app.dependency_overrides[OrganizationService] = lambda: test_organization_service
         app.dependency_overrides[UserService] = lambda: test_user_service
 
-        access_request = create_test_organization_accesss_request(
+        access_request = create_test_organization_access_request(
             TestSession, test_user.id, test_organization.id
         )
 
@@ -1125,7 +1125,7 @@ class TestOrganizationAccessRequestCreate:
         app.dependency_overrides[OrganizationService] = lambda: test_organization_service
         app.dependency_overrides[UserService] = lambda: test_user_service
 
-        access_request = create_test_organization_accesss_request(
+        access_request = create_test_organization_access_request(
             TestSession, test_user.id, test_organization.id, approved=False,
         )
 
@@ -1156,19 +1156,19 @@ class TestMyOrganizationsAccessRequests:
         )
         app.dependency_overrides[UserService] = lambda: test_user_service
 
-        create_test_organization_accesss_request(
+        create_test_organization_access_request(
             TestSession, test_users[0].id, test_organization.id,
         )
-        create_test_organization_accesss_request(
+        create_test_organization_access_request(
             TestSession, test_users[1].id, test_organization.id,
         )
-        create_test_organization_accesss_request(
+        create_test_organization_access_request(
             TestSession, test_organization.members[0].id, test_organization.id, approved=True
         )
 
         client = TestClient(app)
         response = client.get(
-            f"/auth/me/organizations/pending_access_requests",
+            f"/auth/me/organizations/access_requests",
             headers=generate_auth_headers(test_organization.owner.email),
         )
         response_json = response.json()
@@ -1192,19 +1192,17 @@ class TestMyOrganizationsAccessRequests:
         )
         app.dependency_overrides[UserService] = lambda: test_user_service
 
-        create_test_organization_accesss_request(
+        create_test_organization_access_request(
             TestSession, test_organization.members[0].id, test_organization.id, approved=True
         )
-        create_test_organization_accesss_request(
+        create_test_organization_access_request(
             TestSession, test_user.id, test_organization.id, approved=False
         )
-        create_test_organization_accesss_request(
-            TestSession, test_user.id, test_organization.id,
-        )
+        create_test_organization_access_request(TestSession, test_user.id, test_organization.id)
 
         client = TestClient(app)
         response = client.get(
-            f"/auth/me/organizations/pending_access_requests?status=all",
+            f"/auth/me/organizations/access_requests?status=all",
             headers=generate_auth_headers(test_organization.owner.email),
         )
         response_json = response.json()
@@ -1225,19 +1223,17 @@ class TestMyOrganizationsAccessRequests:
         )
         app.dependency_overrides[UserService] = lambda: test_user_service
 
-        create_test_organization_accesss_request(
+        create_test_organization_access_request(
             TestSession, test_organization.members[0].id, test_organization.id, approved=True
         )
-        create_test_organization_accesss_request(
+        create_test_organization_access_request(
             TestSession, test_user.id, test_organization.id, approved=False
         )
-        create_test_organization_accesss_request(
-            TestSession, test_user.id, test_organization.id
-        )
+        create_test_organization_access_request(TestSession, test_user.id, test_organization.id)
 
         client = TestClient(app)
         response = client.get(
-            f"/auth/me/organizations/pending_access_requests?status=processed",
+            f"/auth/me/organizations/access_requests?status=processed",
             headers=generate_auth_headers(test_organization.owner.email),
         )
         response_json = response.json()
@@ -1258,19 +1254,19 @@ class TestMyOrganizationsAccessRequests:
         )
         app.dependency_overrides[UserService] = lambda: test_user_service
 
-        create_test_organization_accesss_request(
+        create_test_organization_access_request(
             TestSession, test_organization.members[0].id, test_organization.id, approved=True
         )
-        create_test_organization_accesss_request(
+        create_test_organization_access_request(
             TestSession, test_users[0].id, test_organization.id,
         )
-        create_test_organization_accesss_request(
+        create_test_organization_access_request(
             TestSession, test_users[1].id, test_organization.id,
         )
 
         client = TestClient(app)
         response = client.get(
-            f"/auth/me/organizations/pending_access_requests?status=unprocessed",
+            f"/auth/me/organizations/access_requests?status=unprocessed",
             headers=generate_auth_headers(test_organization.owner.email),
         )
         response_json = response.json()
@@ -1294,19 +1290,17 @@ class TestMyOrganizationsAccessRequests:
         )
         app.dependency_overrides[UserService] = lambda: test_user_service
 
-        create_test_organization_accesss_request(
+        create_test_organization_access_request(
             TestSession, test_organization.members[0].id, test_organization.id, approved=True
         )
-        create_test_organization_accesss_request(
+        create_test_organization_access_request(
             TestSession, test_user.id, test_organization.id, approved=False
         )
-        create_test_organization_accesss_request(
-            TestSession, test_user.id, test_organization.id,
-        )
+        create_test_organization_access_request(TestSession, test_user.id, test_organization.id)
 
         client = TestClient(app)
         response = client.get(
-            f"/auth/me/organizations/pending_access_requests?status=approved",
+            f"/auth/me/organizations/access_requests?status=approved",
             headers=generate_auth_headers(test_organization.owner.email),
         )
         response_json = response.json()
@@ -1327,19 +1321,17 @@ class TestMyOrganizationsAccessRequests:
         )
         app.dependency_overrides[UserService] = lambda: test_user_service
 
-        create_test_organization_accesss_request(
+        create_test_organization_access_request(
             TestSession, test_organization.members[0].id, test_organization.id, approved=True
         )
-        create_test_organization_accesss_request(
+        create_test_organization_access_request(
             TestSession, test_user.id, test_organization.id, approved=False
         )
-        create_test_organization_accesss_request(
-            TestSession, test_user.id, test_organization.id,
-        )
+        create_test_organization_access_request(TestSession, test_user.id, test_organization.id)
 
         client = TestClient(app)
         response = client.get(
-            f"/auth/me/organizations/pending_access_requests?status=approved",
+            f"/auth/me/organizations/access_requests?status=approved",
             headers=generate_auth_headers(test_organization.owner.email),
         )
         response_json = response.json()
@@ -1359,16 +1351,169 @@ class TestMyOrganizationsAccessRequests:
             lambda: test_organization_access_request_service
         )
         app.dependency_overrides[UserService] = lambda: test_user_service
-        create_test_organization_accesss_request(
+        create_test_organization_access_request(
             TestSession, test_organization.members[0].id, test_organization.id, approved=True
         )
 
         client = TestClient(app)
         response = client.get(
-            f"/auth/me/organizations/pending_access_requests",
+            f"/auth/me/organizations/access_requests",
             headers=generate_auth_headers(test_user.email),
         )
         response_json = response.json()
 
         assert response.status_code == HTTPStatus.OK
         assert len(response_json) == 0
+
+
+class TestOrganizationAccessRequestProcess:
+    @pytest.mark.parametrize(
+        "decision, expected_message", 
+        [
+            (True, "Access request approved"), 
+            (False, "Access request declined"),
+        ],
+    )
+    def test_success(
+        self,
+        TestSession,
+        test_organization_access_request_service,
+        test_organization_service,
+        test_user_service,
+        test_organization,
+        test_user,
+        decision,
+        expected_message,
+
+    ):
+        app.dependency_overrides[OrganizationAccessRequestService] = (
+            lambda: test_organization_access_request_service
+        )
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        access_request = create_test_organization_access_request(
+            TestSession, test_user.id, test_organization.id
+        )
+
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/access_requests/{str(access_request.id)}/process",
+            headers=generate_auth_headers(test_organization.owner.email),
+            json={"approve": decision}
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert response_json["detail"] == expected_message
+        access_request = test_organization_access_request_service.repository.get_by_id(
+            str(access_request.id)
+        )
+        assert access_request.approved is decision
+
+    @pytest.mark.parametrize(
+        "decision, expected_message", 
+        [
+            (True, "Access request approved"), 
+            (False, "Access request declined"),
+        ],
+    )
+    def test_success_process_previously_declined_request(
+        self,
+        TestSession,
+        test_organization_access_request_service,
+        test_organization_service,
+        test_user_service,
+        test_organization,
+        test_user,
+        decision,
+        expected_message,
+    ):
+        app.dependency_overrides[OrganizationAccessRequestService] = (
+            lambda: test_organization_access_request_service
+        )
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        access_request = create_test_organization_access_request(
+            TestSession, test_user.id, test_organization.id, approved=False
+        )
+
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/access_requests/{str(access_request.id)}/process",
+            headers=generate_auth_headers(test_organization.owner.email),
+            json={"approve": decision}
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert response_json["detail"] == expected_message
+        access_request = test_organization_access_request_service.repository.get_by_id(
+            str(access_request.id)
+        )
+        assert access_request.approved is decision
+
+    @pytest.mark.parametrize("decision", [True, False])
+    def test_failure_access_request_already_approved(
+        self,
+        TestSession,
+        test_organization_access_request_service,
+        test_organization_service,
+        test_user_service,
+        test_organization,
+        test_user,
+        decision,
+    ):
+        app.dependency_overrides[OrganizationAccessRequestService] = (
+            lambda: test_organization_access_request_service
+        )
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        access_request = create_test_organization_access_request(
+            TestSession, test_user.id, test_organization.id, approved=True
+        )
+
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/access_requests/{str(access_request.id)}/process",
+            headers=generate_auth_headers(test_organization.owner.email),
+            json={"approve": decision}
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
+        assert response_json["detail"] == "This access request has already been approved"
+
+    @pytest.mark.parametrize("decision", [True, False])
+    def test_failure_no_permission_to_process(
+        self,
+        TestSession,
+        test_organization_access_request_service,
+        test_organization_service,
+        test_user_service,
+        test_organization,
+        test_user,
+        decision,
+    ):
+        app.dependency_overrides[OrganizationAccessRequestService] = (
+            lambda: test_organization_access_request_service
+        )
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+
+        access_request = create_test_organization_access_request(
+            TestSession, test_user.id, test_organization.id
+        )
+
+        client = TestClient(app)
+        response = client.post(
+            f"/auth/me/organizations/access_requests/{str(access_request.id)}/process",
+            headers=generate_auth_headers(test_user.email),
+            json={"approve": decision}
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.FORBIDDEN
+        assert response_json["detail"] == "You do not have the permission to perform this action"

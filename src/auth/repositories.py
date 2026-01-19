@@ -119,7 +119,11 @@ class OrganizationRepository(BaseRepository):
             )
         ).unique().all()
 
-    def session_get_organizations_with_owner(
+    def get_organizations_with_owner_id(self, owner_id: str) -> list[Organization]:
+        with self.sessionmaker() as session:
+            return self.session_get_organizations_with_owner_id(session, owner_id)
+
+    def session_get_organizations_with_owner_id(
         self, 
         session: SessionType, 
         owner_id: str,
@@ -251,7 +255,11 @@ class OrganizationRepository(BaseRepository):
 class OrganizationAccessRequestRepository(BaseRepository):
     model = OrganizationAccessRequest
 
-    def validate_access_request(self, requester_id: str, organization_id: str) -> None:
+    def validate_access_request_can_be_created(
+        self, 
+        requester_id: str, 
+        organization_id: str,
+    ) -> None:
         with self.sessionmaker() as session:
             organization = session.scalar(
                 select(Organization)
@@ -309,7 +317,7 @@ class OrganizationAccessRequestRepository(BaseRepository):
     ) -> list[OrganizationAccessRequest]:
         with self.sessionmaker() as session:
             # TODO: Should the repository be passed here as a dependency to loosen the coupling?
-            organizations = OrganizationRepository().session_get_organizations_with_owner(
+            organizations = OrganizationRepository().session_get_organizations_with_owner_id(
                 session, user_id
             )
             organization_ids = [str(organization.id) for organization in organizations]
@@ -318,14 +326,15 @@ class OrganizationAccessRequestRepository(BaseRepository):
 
             return session.scalars(select(self.model).where(*where_args)).all()
 
-#     def get_pending_for_organization(
-#         self, 
-#         organization_id: str,
-#     ) -> list[OrganizationAccessRequest]:
-#         with self.sessionmaker() as session:
-#             return session.execute(
-#                 select(self.model).where(
-#                     self.model.organization_id == organization_id,
-#                     self.model.approved == None,  # is None doesn't work here!
-#                 )
-#             ).scalars().all()
+    def process_access_request(self, access_request_id: str, approved: bool) -> None:
+        with self.sessionmaker() as session:
+            access_request = session.scalar(select(
+                self.model).where(self.model.id == access_request_id)
+            )
+            access_request.approved = approved
+            try:
+                session.add(access_request)
+                session.commit()
+            except Exception as e:
+                session.rollback()
+                raise e

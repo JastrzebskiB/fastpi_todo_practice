@@ -245,6 +245,9 @@ class OrganizationService:
             self.create_organization_response(organization, user_service) 
             for organization in organizations
         ]
+    
+    def get_organizations_with_owner_id(self, owner_id: str) -> list[Organization]:
+        return self.repository.get_organizations_with_owner_id(owner_id)
 
     def modify_organization_membership(
         self, 
@@ -416,7 +419,7 @@ class OrganizationAccessRequestService:
         organization_service: OrganizationService,
     ) -> OrganizationAccessRequestResponse:
         requester_id = str(user_service.get_current_user(token, check_user_exists=True).id)
-        self.validate_data(organization_id, requester_id)
+        self.validate_access_request_creation_data(organization_id, requester_id)
         
         access_request = self.create_domain_organization_access_request_instance(
             organization_id, requester_id
@@ -436,6 +439,26 @@ class OrganizationAccessRequestService:
         )
         return [self.create_organization_access_request_response(request) for request in requests]
 
+    def process_access_request(
+        self, 
+        access_request_id: str, 
+        payload: OrganizationAccessRequestDecisionPayload,
+        token: str, 
+        user_service: UserService, 
+        organization_service: OrganizationService,
+    ) -> None:
+        me = user_service.get_current_user(token, check_user_exists=True)
+        access_request = self.repository.get_by_id(access_request_id)
+        self.validate_access_request_can_be_processed_by_me(
+            access_request, str(me.id), organization_service,
+        )
+
+        self.repository.process_access_request(access_request_id, payload.approve)
+        if payload.approve:
+            organization_service.add_members_to_organization_by_id(
+                [access_request.requester_id], access_request.organization_id
+            )
+
     # Domain objeect manipulation
     def create_domain_organization_access_request_instance(
         self, 
@@ -447,47 +470,33 @@ class OrganizationAccessRequestService:
         )
 
     # Validation
-    def validate_data(
+    def validate_access_request_creation_data(
         self, 
         organization_id: str, 
         requester_id: str, 
     ) -> None:
-        self.repository.validate_access_request(requester_id, organization_id)
+        # Exceptions raised within the repository
+        self.repository.validate_access_request_can_be_created(requester_id, organization_id)
 
+    def validate_access_request_can_be_processed_by_me(
+        self, 
+        access_request: OrganizationAccessRequest | None, 
+        owner_id: str,
+        organization_service: OrganizationService,
+    ) -> None:
+        if not access_request:
+            raise exceptions.OrganizationAccessRequestNotFound
+        # We're ok with approving a previously denied access request, so we only raise an exception
+        # on an approved access request
+        if access_request.approved is True:
+            raise exceptions.ValidationException(
+                "This access request has already been approved"
+            )
 
-#     def get_pending_requests_for_organization(
-#         self, 
-#         organization_id: str,
-#         token: str, 
-#         user_service: UserService,
-#         organization_service: OrganizationService,
-#     ) -> list[OrganizationAccessRequestResponse]:
-#         organization_service.validate_organization_ownership(organization_id, token, user_service)
-
-#         organization_access_requests = self.repository.get_pending_for_organization(organization_id)
-#         return [
-#             self.create_organization_access_request_response(access_request) for 
-#             access_request in organization_access_requests
-#         ]
-
-#     def process_organization_access_request(
-#         self, 
-#         organization_access_request_id: str,
-#         payload: OrganizationAccessRequestDecisionPayload,
-#         token: str, 
-#         user_service: UserService,
-#         organization_service: OrganizationService,
-#     ) -> list[OrganizationAccessRequestResponse]:
-#         organization_access_request = self.repository.get_by_id(organization_access_request_id)
-#         organization_service.validate_organization_ownership(
-#             organization_access_request.organization_id, token, user_service
-#         )
-
-#         # TODO: This doesn't work, will fix after checking/reworking other views
-#         organization_access_request.approved = payload.approve
-#         self.repository.update(organization_access_request)
-
-#         return self.create_organization_access_request_response(organization_access_request)
+        organizations = organization_service.get_organizations_with_owner_id(owner_id)
+        organization_ids = [organization.id for organization in organizations]
+        if access_request.organization_id not in organization_ids:
+            raise exceptions.AuthorizationFailedException
 
     # Serialization
     def create_organization_access_request_response(

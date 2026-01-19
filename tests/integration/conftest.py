@@ -277,7 +277,7 @@ def test_organization_with_members(
     # Note: cleanup only happens in test_user_repository
 
 
-def create_test_organization_accesss_request(
+def create_test_organization_access_request(
     TestSession: sessionmaker, 
     requester_id: str,
     organization_id: str,
@@ -293,5 +293,6 @@ def create_test_organization_accesss_request(
     with TestSession() as session:
         session.add(access_request)
         session.commit()
+        session.refresh(access_request)
 
     return access_request
