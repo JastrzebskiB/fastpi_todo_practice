@@ -35,6 +35,21 @@ class BoardService:
 
         return self.create_board_response_flat(board)
 
+    def list_boards_for_organization(
+        self,
+        organization_id: str,
+        token: str,
+        user_service: UserService,
+        organization_service: OrganizationService,
+    ) -> list[BoardResponseFlat]:
+        me = user_service.get_current_user(token)
+        organization_service.validate_user_id_belongs_to_organization(organization_id, str(me.id))
+        
+        return [
+            self.create_board_response_flat(board) 
+            for board in self.repository.list_boards_for_organization(organization_id)
+        ]
+
     # Domain object manipulation
     def create_domain_board_instance(self, payload: CreateBoardPayload) -> Board:
         return Board(name=payload.name, organization_id=payload.organization_id)

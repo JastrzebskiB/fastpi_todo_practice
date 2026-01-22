@@ -20,3 +20,9 @@ class BoardRepository(BaseRepository):
                     self.model.organization_id == organization_id,
                 ).select()
             )
+
+    def list_boards_for_organization(self, organization_id: str) -> bool:
+        with self.sessionmaker() as session:
+            return session.scalars(
+                select(self.model).where(self.model.organization_id == organization_id)
+            ).all()

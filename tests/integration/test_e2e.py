@@ -1630,3 +1630,58 @@ class TestBoardCreate:
         assert response_json["detail"] == (
             f"This organization already has a Board named {test_board.name}"
         )
+
+
+class TestBoardsList:
+    def test_success(
+        self, 
+        TestSession,
+        test_board_service, 
+        test_user_service, 
+        test_organization_service,
+        test_organization,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        client = TestClient(app)
+
+        board_names = []
+        for i in range(1, 3):
+            name = f"Test Board {i}"
+            board_names.append(name)
+            create_test_board(TestSession, name, str(test_organization.id))
+
+        response = client.get(
+            f"/todo/organizations/{str(test_organization.id)}/boards",
+            headers=generate_auth_headers(test_organization.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert len(response_json) == 2
+        response_board_names = [board["name"] for board in response_json]
+        for name in board_names:
+            assert name in response_board_names
+
+    def test_fail_not_member_of_organization(
+        self, 
+        test_board_service, 
+        test_user_service, 
+        test_organization_service,
+        test_organization,
+        test_user
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        client = TestClient(app)
+
+        response = client.get(
+            f"/todo/organizations/{str(test_organization.id)}/boards",
+            headers=generate_auth_headers(test_user.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.FORBIDDEN
+        assert response_json["detail"] == "You do not have the permission to perform this action"

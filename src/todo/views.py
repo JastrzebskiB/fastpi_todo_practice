@@ -18,4 +18,18 @@ async def board_create(
     user_service: UserService = Depends(UserService),
     organization_service: OrganizationService = Depends(OrganizationService)
 ):
+    # TODO: Also create default columns
     return service.create_board(payload, token, user_service, organization_service)
+
+
+@router.get("/organizations/{organization_id}/boards")
+async def boards_for_organization_list(
+    organization_id: str,
+    token: str = Depends(oauth2_scheme),
+    service: BoardService = Depends(BoardService),
+    user_service: UserService = Depends(UserService),
+    organization_service: OrganizationService = Depends(OrganizationService),
+):
+    return service.list_boards_for_organization(
+        organization_id, token, user_service, organization_service,
+    )
