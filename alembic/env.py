@@ -5,7 +5,9 @@ from alembic.config import Config
 from sqlalchemy import create_engine, pool
 
 from src.core.config import settings
-from src.auth.models import Base
+from src.core.db import Base
+from src.auth.models import Organization, OrganizationAccessRequest, User
+from src.todo.models import Board, Column, Task
 
 
 def use_default_db_url_if_needed(config: Config) -> None:

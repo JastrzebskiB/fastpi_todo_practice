@@ -11,9 +11,11 @@ from src.auth.models import Organization
 from src.auth.repositories import OrganizationRepository, UserRepository
 from src.auth.services import JWTService
 from src.auth.views import OrganizationAccessRequestService, OrganizationService, UserService
+from src.todo.services import BoardService
 from src.main import app
 
 from tests.integration.conftest import (
+    create_test_board,
     create_test_organization_access_request, 
     create_test_organization,
 ) 
@@ -1517,3 +1519,114 @@ class TestOrganizationAccessRequestProcess:
 
         assert response.status_code == HTTPStatus.FORBIDDEN
         assert response_json["detail"] == "You do not have the permission to perform this action"
+
+
+class TestBoardCreate:
+    def test_success_as_owner(
+        self, 
+        test_board_repository,
+        test_board_service, 
+        test_user_service, 
+        test_organization_service,
+        test_organization,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        client = TestClient(app)
+
+        payload = {"name": "Test Board", "organization_id": str(test_organization.id)}
+        response = client.post(
+            "/todo/board",
+            headers=generate_auth_headers(test_organization.owner.email),
+            json=payload,
+        )
+        response_json = response.json()
+
+        board_count = test_board_repository.get_count()
+
+        assert response.status_code == HTTPStatus.OK
+        assert board_count == 1
+        assert response_json["organization_id"] == payload["organization_id"]
+        assert response_json["name"] == payload["name"]
+        assert response_json["id"]
+
+    def test_success_as_member(
+        self, 
+        test_board_repository,
+        test_board_service, 
+        test_user_service, 
+        test_organization_service,
+        test_organization_with_members,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        client = TestClient(app)
+
+        payload = {"name": "Test Board", "organization_id": str(test_organization_with_members.id)}
+        response = client.post(
+            "/todo/board",
+            headers=generate_auth_headers(test_organization_with_members.members[0].email),
+            json=payload,
+        )
+        response_json = response.json()
+
+        board_count = test_board_repository.get_count()
+
+        assert response.status_code == HTTPStatus.OK
+        assert board_count == 1
+        assert response_json["organization_id"] == payload["organization_id"]
+        assert response_json["name"] == payload["name"]
+        assert response_json["id"]
+
+    def test_fail_user_outside_organization(
+        self,
+        test_board_service, 
+        test_user_service, 
+        test_organization_service,
+        test_organization,
+        test_user,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        client = TestClient(app)
+
+        payload = {"name": "Test Board", "organization_id": str(test_organization.id)}
+        response = client.post(
+            "/todo/board",
+            headers=generate_auth_headers(test_user.email),
+            json=payload,
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.FORBIDDEN
+        assert response_json["detail"] == "You do not have the permission to perform this action"
+
+    def test_fail_duplicate_name(
+        self,
+        TestSession,
+        test_board_service, 
+        test_user_service, 
+        test_organization_service,
+        test_organization,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        test_board = create_test_board(TestSession, "Test Board", str(test_organization.id))
+        client = TestClient(app)
+
+        payload = {"name": test_board.name, "organization_id": str(test_board.organization_id)}
+        response = client.post(
+            "/todo/board",
+            headers=generate_auth_headers(test_organization.owner.email),
+            json=payload,
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
+        assert response_json["detail"] == (
+            f"This organization already has a Board named {test_board.name}"
+        )

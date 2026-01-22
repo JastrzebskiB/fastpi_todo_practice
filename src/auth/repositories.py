@@ -6,6 +6,7 @@ from sqlalchemy.sql.elements import BinaryExpression, BooleanClauseList
 from sqlalchemy.sql import delete, exists, or_, select, update
 
 from ..core import BaseRepository, Session, settings
+from ..core.exceptions import ValidationException
 from . import exceptions
 from .models import Organization, OrganizationAccessRequest, User, organization_member_join_table
 
@@ -31,12 +32,10 @@ class UserRepository(BaseRepository):
             return session.scalar(exists().where(self.model.email == email).select())
 
     def check_username_unique(self, username: str) -> bool:
-        with self.sessionmaker() as session:
-            return not self.check_username_exists(username)
+        return not self.check_username_exists(username)
 
     def check_email_unique(self, email: str) -> bool:
-        with self.sessionmaker() as session:
-            return not self.check_email_exists(email)
+        return not self.check_email_exists(email)
 
     def get_user_by_email(self, email: str) -> User:
         with self.sessionmaker() as session:
@@ -77,6 +76,16 @@ class OrganizationRepository(BaseRepository):
     def check_name_unique(self, name: str) -> bool:
         with self.sessionmaker() as session:
             return not self.check_name_exists(name)
+
+    def check_user_id_belongs_to_organization(self, organization_id: str, user_id: str) -> bool:
+        with self.sessionmaker() as session:
+            organization = session.scalar(
+                select(self.model)
+                .options(joinedload(self.model.members))
+                .where(self.model.id == organization_id)
+            )
+            member_ids = [str(member.id) for member in organization.members]
+            return user_id in member_ids
 
     def create_organization_with_members(
         self, 
@@ -268,9 +277,7 @@ class OrganizationAccessRequestRepository(BaseRepository):
             )
             # Validate that requester is not a member of the Organization yet
             if requester_id in [str(member.id) for member in organization.members]:
-                raise exceptions.ValidationException(
-                    detail="You are already a member of this Organization"
-                )
+                raise ValidationException(detail="You are already a member of this Organization")
             # Get all existing unprocessed/unapproved access requests
             existing_access_requests = session.scalars(
                 select(self.model)
@@ -292,7 +299,7 @@ class OrganizationAccessRequestRepository(BaseRepository):
     
                 # Validate no existing access request is pending processing
                 if access_request.approved is None:
-                    raise exceptions.ValidationException(
+                    raise ValidationException(
                         detail=(
                             "You already requested access to this Organization. "
                             "Your request awaits processing"
@@ -301,7 +308,7 @@ class OrganizationAccessRequestRepository(BaseRepository):
                 # Validate no existing access request was denied in the last week (default value)
                 elif not access_request.approved and updated_recently:
                     updated_at = access_request.updated_at.strftime("%Y-%m-%d %H:%M:%S")
-                    raise exceptions.ValidationException(
+                    raise ValidationException(
                         detail=(
                             "Your access request for this Organization was denied on "
                             f"{updated_at}. Wait for at least "

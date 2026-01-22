@@ -6,8 +6,10 @@ from pydantic import BaseModel
 
 from .core import app
 from .auth.views import router as auth_router
+from .todo.views import router as todo_router
 
 app.include_router(auth_router)
+app.include_router(todo_router)
 
 
 # Uncomment if debugging of payloads or routing is needed. This middleware is intentionally 

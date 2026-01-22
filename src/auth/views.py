@@ -1,16 +1,14 @@
-from uuid import UUID
-
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 
+from ..core.auth import oauth2_scheme
 from .dto import (
     CreateOrganizationPayload, 
     CreateUserPayload,
     ModifyOrganizationMembershipPayload,
     OrganizationAccessRequestDecisionPayload,
 )
-from .models import User
 from .query_params import RequestAccessStatus
 from .services import (
     OrganizationAccessRequestService,
@@ -19,7 +17,6 @@ from .services import (
 )
 
 router = APIRouter(prefix="/auth", tags=["auth"])
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
 
 
 @router.post("/token")
@@ -123,6 +120,7 @@ async def organization_delete(
     return JSONResponse(status_code=status_code, content={"detail": message})
 
 
+# Organization Access Requests
 @router.post("/organizations/{organization_id}/request_access")
 async def organization_access_request_create(
     organization_id: str,

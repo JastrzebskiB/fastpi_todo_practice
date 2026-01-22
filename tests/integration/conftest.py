@@ -14,6 +14,9 @@ from src.auth.repositories import (
     UserRepository,
 )
 from src.auth.services import OrganizationAccessRequestService, OrganizationService, UserService
+from src.todo.models import Board
+from src.todo.repositories import BoardRepository
+from src.todo.services import BoardService
 
 
 TEST_DB_NAME = "fastapi_todo_test"
@@ -79,6 +82,17 @@ def run_migrations(db_name: str) -> None:
     command.upgrade(alembic_config, "head")
 
 
+# TODO: Consider changing name to TestSessionmaker?
+@fixture(scope="function")
+def TestSession(test_db: str) -> sessionmaker:
+    engine = create_engine(test_db)
+    Session = sessionmaker(engine)
+
+    yield Session
+    # No teardown required
+
+
+# auth
 def truncate_user_table(sessionmaker):
     with sessionmaker() as session:
         session.execute(text("TRUNCATE TABLE public.user RESTART IDENTITY CASCADE"))
@@ -95,16 +109,6 @@ def truncate_organization_access_request_table(sessionmaker):
     with sessionmaker() as session:
         session.execute(text("TRUNCATE TABLE organization_access_request RESTART IDENTITY CASCADE"))
         session.commit()
-
-
-# TODO: Consider changing name to TestSessionmaker?
-@fixture(scope="function")
-def TestSession(test_db: str) -> sessionmaker:
-    engine = create_engine(test_db)
-    Session = sessionmaker(engine)
-
-    yield Session
-    # No teardown required
 
 
 @fixture(scope="function")
@@ -296,3 +300,38 @@ def create_test_organization_access_request(
         session.refresh(access_request)
 
     return access_request
+
+
+# todo
+def truncate_board_table(sessionmaker):
+    with sessionmaker() as session:
+        session.execute(text("TRUNCATE TABLE board RESTART IDENTITY CASCADE"))
+        session.commit()
+
+
+@fixture(scope="function")
+def test_board_repository(TestSession) -> BoardRepository:
+    yield BoardRepository(TestSession)
+
+    truncate_board_table(TestSession)
+
+
+@fixture(scope="function")
+def test_board_service(test_board_repository) -> BoardService:
+    yield BoardService(repository=test_board_repository)
+
+    # Cleanup done in test_board_repository
+
+
+def create_test_board(
+    TestSession: sessionmaker, 
+    name: str, 
+    organization_id: str,
+) -> Board:
+    with TestSession() as session:
+        board = Board(name=name, organization_id=organization_id)
+        session.add(board)
+        session.commit()
+        session.refresh(board)
+
+    return board

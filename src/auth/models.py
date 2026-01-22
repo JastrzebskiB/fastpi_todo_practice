@@ -1,10 +1,8 @@
 import uuid
-from datetime import datetime
 from typing import Optional, List
 
 from sqlalchemy import Column, ForeignKey, Table
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy.sql import func
 
 from ..core.db import Base, CommonFieldsMixin
 
