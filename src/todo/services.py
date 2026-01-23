@@ -4,13 +4,16 @@ from fastapi.params import Depends as DependsType
 from ..auth.services import OrganizationService, UserService
 from ..core import settings
 from ..core.exceptions import ValidationException
+from .constants import DEFAULT_COLUMN_NAMES
 from .dto import (
     BoardResponse,
     BoardResponseFlat,
     CreateBoardPayload,
+    CreateColumnPayload,
+    ColumnResponseFlat,
 )
-from .models import Board
-from .repositories import BoardRepository
+from .models import Board, Column
+from .repositories import BoardRepository, ColumnRepository
 
 
 class BoardService:
@@ -23,17 +26,39 @@ class BoardService:
         self, 
         payload: CreateBoardPayload, 
         token: str, 
+        column_service: "ColumnService",
         user_service: UserService,
         organization_service: OrganizationService,
     ) -> BoardResponseFlat:
-        me = user_service.get_current_user(token)
+        me_id = str(user_service.get_current_user(token).id)
         organization_service.validate_user_id_belongs_to_organization(
-            payload.organization_id, str(me.id)
+            payload.organization_id, me_id
         )
         self.validate_board_name_unique_in_organization(payload)
         board = self.repository.create(self.create_domain_board_instance(payload))
+        columns = self.create_columns_for_new_board(str(board.id), me_id, payload, column_service)
 
-        return self.create_board_response_flat(board)
+        return self.create_board_response(board, columns, column_service)
+
+    def create_columns_for_new_board(
+        self, 
+        board_id: str, 
+        user_id: str,
+        payload: CreateBoardPayload, 
+        column_service: "ColumnService",
+    ) -> list[ColumnResponseFlat]:
+        if payload.use_columns_from_board_id:
+            columns_to_copy = self.repository.get_columns_for_board_id(
+                payload.use_columns_from_board_id, user_id
+            )
+            column_names = [column.name for column in columns_to_copy]
+            columns = column_service.create_columns_for_board_id(board_id, column_names)
+        elif payload.add_default_columns:
+            columns = column_service.create_columns_for_board_id(board_id, DEFAULT_COLUMN_NAMES)
+        else:
+            columns = []
+        
+        return [column_service.create_column_response_flat(column) for column in columns]
 
     def list_boards_for_organization(
         self,
@@ -64,3 +89,59 @@ class BoardService:
     # Serialization
     def create_board_response_flat(self, board: Board) -> BoardResponseFlat:
         return BoardResponseFlat(id=board.id,name=board.name,organization_id=board.organization_id)
+
+    def create_board_response(
+        self, 
+        board: Board, 
+        columns: list[ColumnResponseFlat],
+        column_service: "ColumnService",
+    ) -> BoardResponse:
+        return BoardResponse(
+            id=board.id,
+            organization_id=board.organization_id,
+            name=board.name,
+            columns=columns,
+        )
+
+
+class ColumnService:
+    def __init__(self, repository: ColumnRepository = Depends(ColumnRepository)) -> None:
+        if isinstance(repository, DependsType):
+            repository = repository.dependency()
+        self.repository = repository
+
+    def create_columns_for_board_id(
+        self, 
+        board_id: str, 
+        column_names: list[str]
+    ) -> list[ColumnResponseFlat]:
+        columns = [
+            self.repository.create(column) 
+            for column in self.create_domain_column_instances_for_board_id(board_id, column_names)
+        ]
+        return [self.create_column_response_flat(column) for column in columns]
+
+    # Domain object manipulation
+    def create_domain_column_instances_for_board_id(
+        self, 
+        board_id: str, 
+        column_names: list[str],
+    ) -> list[Column]:
+        return [
+            self.create_domain_column_instance(
+                CreateColumnPayload(board_id=board_id, name=name, order=i)
+            ) 
+            for i, name in enumerate(column_names)
+        ]
+
+    def create_domain_column_instance(self, payload: CreateColumnPayload) -> Column:
+        return Column(name=payload.name, order=payload.order, board_id=payload.board_id)
+
+    # Serialization
+    def create_column_response_flat(self, column: Column) -> ColumnResponseFlat:
+        return ColumnResponseFlat(
+            id=column.id,
+            board_id=column.board_id,
+            name=column.name,
+            order=column.order,
+        )

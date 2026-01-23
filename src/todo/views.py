@@ -4,7 +4,7 @@ from fastapi.responses import JSONResponse
 from ..auth.services import UserService, OrganizationService
 from ..core.auth import oauth2_scheme
 from .dto import CreateBoardPayload
-from .services import BoardService
+from .services import BoardService, ColumnService
 
 router = APIRouter(prefix="/todo", tags=["todo"])
 
@@ -15,11 +15,12 @@ async def board_create(
     payload: CreateBoardPayload,
     token: str = Depends(oauth2_scheme),
     service: BoardService = Depends(BoardService),
+    column_service: ColumnService = Depends(ColumnService),
     user_service: UserService = Depends(UserService),
     organization_service: OrganizationService = Depends(OrganizationService)
 ):
     # TODO: Also create default columns
-    return service.create_board(payload, token, user_service, organization_service)
+    return service.create_board(payload, token, column_service, user_service, organization_service)
 
 
 @router.get("/organizations/{organization_id}/boards")

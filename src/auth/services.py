@@ -6,9 +6,7 @@ from fastapi.params import Depends as DependsType
 from fastapi.security import OAuth2PasswordRequestForm
 from jwt import decode as jwt_decode, encode as jwt_encode, exceptions as jwt_exceptions
 
-from ..core import settings
-from ..core.exceptions import ValidationException
-from . import exceptions
+from ..core import exceptions, settings
 from .dto import (
     CreateOrganizationPayload, 
     CreateUserPayload,
@@ -151,7 +149,7 @@ class UserService:
             field = "field" if singular else "fields"
             contain = "contains" if singular else "contain"
             value = "value" if singular else "values"
-            raise ValidationException(
+            raise exceptions.ValidationException(
                 f"The following {field} {contain} non-unique {value}: {duplicate_fields}"
             )
 
@@ -164,7 +162,9 @@ class UserService:
             singular = len(missing_ids) == 1
             user = "User" if singular else "Users"
             id_ = "id" if singular else "ids"
-            raise ValidationException(f"{user} with the following {id_}: {missing_ids} not found")
+            raise exceptions.ValidationException(
+                f"{user} with the following {id_}: {missing_ids} not found"
+            )
 
     # Serialization
     def create_user_response(
@@ -347,7 +347,9 @@ class OrganizationService:
     # Validation
     def validate_unique_organization_fields(self, payload: CreateOrganizationPayload) -> None:
         if not self.repository.check_name_unique(payload.name):
-            raise ValidationException("The following field contains non-unique value: ['name']")
+            raise exceptions.ValidationException(
+                "The following field contains non-unique value: ['name']"
+            )
 
     def validate_organization_with_id_and_owner_id_exists(
         self, 
@@ -489,7 +491,7 @@ class OrganizationAccessRequestService:
         # We're ok with approving a previously denied access request, so we only raise an exception
         # on an approved access request
         if access_request.approved is True:
-            raise ValidationException("This access request has already been approved")
+            raise exceptions.ValidationException("This access request has already been approved")
 
         organizations = organization_service.get_organizations_with_owner_id(owner_id)
         organization_ids = [organization.id for organization in organizations]

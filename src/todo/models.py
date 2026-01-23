@@ -19,6 +19,11 @@ class Board(Base, CommonFieldsMixin):
     organization_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("organization.id"), nullable=False
     )
+    organization: Mapped["Organization"] = relationship(foreign_keys=[organization_id])
+
+    columns: Mapped[list["Column"]] = relationship(
+        back_populates="board", order_by="Column.order, Column.created_at"
+    )
 
 
 class Column(Base, CommonFieldsMixin):
@@ -32,6 +37,9 @@ class Column(Base, CommonFieldsMixin):
     order: Mapped[int] = mapped_column(nullable=False, default=0)
 
     board_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("board.id"), nullable=False)
+    board: Mapped["Board"] = relationship(back_populates="columns")
+
+    tasks: Mapped[list["Task"]] = relationship(back_populates="column")
 
 
 class Task(Base, CommonFieldsMixin):
@@ -46,4 +54,8 @@ class Task(Base, CommonFieldsMixin):
     assigned_to: Mapped[Optional[uuid.UUID]] = mapped_column(
         ForeignKey("user.id"), nullable=True
     )
-    in_column: Mapped[uuid.UUID] = mapped_column(ForeignKey("column.id"), nullable=False)
+    column_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("column.id"), nullable=False)
+    column: Mapped["Column"] = relationship(
+        foreign_keys=[column_id],
+        back_populates="tasks"
+    )

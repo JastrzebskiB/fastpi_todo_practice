@@ -26,6 +26,8 @@ class Organization(Base, CommonFieldsMixin):
         secondary=organization_member_join_table,
         back_populates="organizations"
     )
+    # many-to-one relationships:
+    # boards: Mapped[List["Board"]] = relationship(back_populates="organization")
     # one-to-one relationships:
     owner_id: Mapped[Optional[uuid.UUID]] = mapped_column(ForeignKey("user.id"), nullable=True)
     owner: Mapped[Optional["User"]] = relationship(

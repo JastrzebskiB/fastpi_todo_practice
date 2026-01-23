@@ -34,4 +34,4 @@ class RequestAccessStatus(StrEnum):
         elif self == RequestAccessStatus.REJECTED:
             return OrganizationAccessRequest.approved == False
         
-        raise VaueError(f"RequestAccessStatus {self=} had an unexpected value.")
+        raise ValueError(f"RequestAccessStatus {self=} had an unexpected value.")

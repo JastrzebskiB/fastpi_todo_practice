@@ -14,9 +14,9 @@ from src.auth.repositories import (
     UserRepository,
 )
 from src.auth.services import OrganizationAccessRequestService, OrganizationService, UserService
-from src.todo.models import Board
-from src.todo.repositories import BoardRepository
-from src.todo.services import BoardService
+from src.todo.models import Board, Column
+from src.todo.repositories import BoardRepository, ColumnRepository
+from src.todo.services import BoardService, ColumnService
 
 
 TEST_DB_NAME = "fastapi_todo_test"
@@ -309,6 +309,12 @@ def truncate_board_table(sessionmaker):
         session.commit()
 
 
+def truncate_column_table(sessionmaker):
+    with sessionmaker() as session:
+        session.execute(text("TRUNCATE TABLE public.column RESTART IDENTITY CASCADE"))
+        session.commit()
+
+
 @fixture(scope="function")
 def test_board_repository(TestSession) -> BoardRepository:
     yield BoardRepository(TestSession)
@@ -323,6 +329,20 @@ def test_board_service(test_board_repository) -> BoardService:
     # Cleanup done in test_board_repository
 
 
+@fixture(scope="function")
+def test_column_repository(TestSession) -> ColumnRepository:
+    yield ColumnRepository(TestSession)
+
+    truncate_column_table(TestSession)
+
+
+@fixture(scope="function")
+def test_column_service(test_column_repository) -> ColumnService:
+    yield ColumnService(repository=test_column_repository)
+
+    # Cleanup done in test_column_repository
+
+
 def create_test_board(
     TestSession: sessionmaker, 
     name: str, 
@@ -335,3 +355,18 @@ def create_test_board(
         session.refresh(board)
 
     return board
+
+
+def create_test_column(
+    TestSession: sessionmaker,
+    name: str,
+    board_id: str,
+    order: int,
+) -> Column:
+    with TestSession() as session:
+        column = Column(board_id=board_id, name=name, order=order)
+        session.add(column)
+        session.commit()
+        session.refresh(column)
+    
+    return column

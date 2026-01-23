@@ -6,16 +6,18 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import joinedload
 
-from src.auth.exceptions import AuthenticationFailedException
+from src.core.exceptions import AuthenticationFailedException
 from src.auth.models import Organization
 from src.auth.repositories import OrganizationRepository, UserRepository
 from src.auth.services import JWTService
 from src.auth.views import OrganizationAccessRequestService, OrganizationService, UserService
-from src.todo.services import BoardService
+from src.todo import constants as todo_constants
+from src.todo.services import BoardService, ColumnService
 from src.main import app
 
 from tests.integration.conftest import (
     create_test_board,
+    create_test_column,
     create_test_organization_access_request, 
     create_test_organization,
 ) 
@@ -1522,15 +1524,17 @@ class TestOrganizationAccessRequestProcess:
 
 
 class TestBoardCreate:
-    def test_success_as_owner(
+    def test_success_with_defaults_as_owner(
         self, 
         test_board_repository,
         test_board_service, 
+        test_column_service,
         test_user_service, 
         test_organization_service,
         test_organization,
     ):
         app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
         app.dependency_overrides[UserService] = lambda: test_user_service
         app.dependency_overrides[OrganizationService] = lambda: test_organization_service
         client = TestClient(app)
@@ -1550,16 +1554,22 @@ class TestBoardCreate:
         assert response_json["organization_id"] == payload["organization_id"]
         assert response_json["name"] == payload["name"]
         assert response_json["id"]
+        assert len(response_json["columns"]) == 5
+        assert [
+            column["name"] for column in response_json["columns"]
+        ] == todo_constants.DEFAULT_COLUMN_NAMES
 
-    def test_success_as_member(
+    def test_success_with_defaults_as_member(
         self, 
         test_board_repository,
         test_board_service, 
+        test_column_service,
         test_user_service, 
         test_organization_service,
         test_organization_with_members,
     ):
         app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
         app.dependency_overrides[UserService] = lambda: test_user_service
         app.dependency_overrides[OrganizationService] = lambda: test_organization_service
         client = TestClient(app)
@@ -1579,16 +1589,192 @@ class TestBoardCreate:
         assert response_json["organization_id"] == payload["organization_id"]
         assert response_json["name"] == payload["name"]
         assert response_json["id"]
+        assert len(response_json["columns"]) == 5
+        assert [
+            column["name"] for column in response_json["columns"]
+        ] == todo_constants.DEFAULT_COLUMN_NAMES
+
+    def test_success_copying_columns_as_owner(
+        self, 
+        TestSession,
+        test_board_repository,
+        test_board_service, 
+        test_column_service,
+        test_user_service, 
+        test_organization_service,
+        test_organization,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        client = TestClient(app)
+
+        existing_board = create_test_board(TestSession, "Existing Board", str(test_organization.id))
+        existing_column = create_test_column(TestSession, "Test Column", str(existing_board.id), 1)
+
+        payload = {
+            "name": "Test Board", 
+            "organization_id": str(test_organization.id), 
+            "use_columns_from_board_id": str(existing_board.id),
+        }
+        response = client.post(
+            "/todo/board",
+            headers=generate_auth_headers(test_organization.owner.email),
+            json=payload,
+        )
+        response_json = response.json()
+
+        board_count = test_board_repository.get_count()
+
+        assert response.status_code == HTTPStatus.OK
+        assert board_count == 2
+        assert response_json["organization_id"] == payload["organization_id"]
+        assert response_json["name"] == payload["name"]
+        assert response_json["id"]
+        assert len(response_json["columns"]) == 1
+        assert response_json["columns"][0]["name"] == existing_column.name
+
+    def test_success_copying_columns_as_member(
+        self, 
+        TestSession,
+        test_board_repository,
+        test_board_service, 
+        test_column_service,
+        test_user_service, 
+        test_organization_service,
+        test_organization_with_members,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        client = TestClient(app)
+
+        organization_id = str(test_organization_with_members.id)
+        existing_board = create_test_board(TestSession, "Existing Board", organization_id)
+        existing_column = create_test_column(TestSession, "Test Column", str(existing_board.id), 1)
+
+        payload = {
+            "name": "Test Board", 
+            "organization_id": organization_id, 
+            "use_columns_from_board_id": str(existing_board.id),
+        }
+        response = client.post(
+            "/todo/board",
+            headers=generate_auth_headers(test_organization_with_members.members[0].email),
+            json=payload,
+        )
+        response_json = response.json()
+
+        board_count = test_board_repository.get_count()
+
+        assert response.status_code == HTTPStatus.OK
+        assert board_count == 2
+        assert response_json["organization_id"] == payload["organization_id"]
+        assert response_json["name"] == payload["name"]
+        assert response_json["id"]
+        assert len(response_json["columns"]) == 1
+        assert response_json["columns"][0]["name"] == existing_column.name
+
+    def test_success_copying_columns_from_board_of_affiliated_organization_as_owner(
+        self, 
+        TestSession,
+        test_board_repository,
+        test_board_service, 
+        test_column_service,
+        test_user_service, 
+        test_organization_service,
+        test_organization,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        client = TestClient(app)
+
+        affiliated_org = create_test_organization(
+            TestSession, name="Affiliated org", owner=test_organization.owner,
+        )
+        existing_board = create_test_board(TestSession, "Existing Board", str(affiliated_org.id))
+        existing_column = create_test_column(TestSession, "Test Column", str(existing_board.id), 1)
+
+        payload = {
+            "name": "Test Board", 
+            "organization_id": str(test_organization.id), 
+            "use_columns_from_board_id": str(existing_board.id),
+        }
+        response = client.post(
+            "/todo/board",
+            headers=generate_auth_headers(test_organization.owner.email),
+            json=payload,
+        )
+        response_json = response.json()
+
+        board_count = test_board_repository.get_count()
+
+        assert response.status_code == HTTPStatus.OK
+        assert board_count == 2
+        assert response_json["organization_id"] == payload["organization_id"]
+        assert response_json["name"] == payload["name"]
+        assert response_json["id"]
+        assert len(response_json["columns"]) == 1
+        assert response_json["columns"][0]["name"] == existing_column.name
+
+    def test_success_copying_columns_from_board_of_affiliated_organization_as_owner(
+        self, 
+        TestSession,
+        test_board_repository,
+        test_board_service, 
+        test_column_service,
+        test_user_service, 
+        test_organization_service,
+        test_organization_with_members,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        client = TestClient(app)
+
+        me = test_organization_with_members.members[0]
+        affiliated_org = create_test_organization(TestSession, name="Affiliated org", owner=me)
+        existing_board = create_test_board(TestSession, "Existing Board", str(affiliated_org.id))
+        existing_column = create_test_column(TestSession, "Test Column", str(existing_board.id), 1)
+
+        payload = {
+            "name": "Test Board", 
+            "organization_id": str(test_organization_with_members.id), 
+            "use_columns_from_board_id": str(existing_board.id),
+        }
+        response = client.post(
+            "/todo/board",
+            headers=generate_auth_headers(me.email),
+            json=payload,
+        )
+        response_json = response.json()
+
+        board_count = test_board_repository.get_count()
+
+        assert response.status_code == HTTPStatus.OK
+        assert board_count == 2
+        assert response_json["organization_id"] == payload["organization_id"]
+        assert response_json["name"] == payload["name"]
+        assert response_json["id"]
+        assert len(response_json["columns"]) == 1
+        assert response_json["columns"][0]["name"] == existing_column.name
 
     def test_fail_user_outside_organization(
         self,
         test_board_service, 
+        test_column_service,
         test_user_service, 
         test_organization_service,
         test_organization,
         test_user,
     ):
         app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
         app.dependency_overrides[UserService] = lambda: test_user_service
         app.dependency_overrides[OrganizationService] = lambda: test_organization_service
         client = TestClient(app)
@@ -1608,11 +1794,13 @@ class TestBoardCreate:
         self,
         TestSession,
         test_board_service, 
+        test_column_service,
         test_user_service, 
         test_organization_service,
         test_organization,
     ):
         app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
         app.dependency_overrides[UserService] = lambda: test_user_service
         app.dependency_overrides[OrganizationService] = lambda: test_organization_service
         test_board = create_test_board(TestSession, "Test Board", str(test_organization.id))
@@ -1630,6 +1818,44 @@ class TestBoardCreate:
         assert response_json["detail"] == (
             f"This organization already has a Board named {test_board.name}"
         )
+
+    def test_fail_copying_columns_from_board_of_unaffiliated_organization(
+        self, 
+        TestSession,
+        test_board_repository,
+        test_board_service, 
+        test_column_service,
+        test_user_service, 
+        test_organization_service,
+        test_organization,
+        test_user,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        client = TestClient(app)
+
+        unaffiliated_org = create_test_organization(
+            TestSession, name="Unaffiliated org", owner=test_user,
+        )
+        existing_board = create_test_board(TestSession, "Existing Board", str(unaffiliated_org.id))
+        existing_column = create_test_column(TestSession, "Test Column", str(existing_board.id), 1)
+
+        payload = {
+            "name": "Test Board", 
+            "organization_id": str(test_organization.id), 
+            "use_columns_from_board_id": str(existing_board.id),
+        }
+        response = client.post(
+            "/todo/board",
+            headers=generate_auth_headers(test_organization.owner.email),
+            json=payload,
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.FORBIDDEN
+        assert response_json["detail"] == "You do not have the permission to perform this action"
 
 
 class TestBoardsList:
