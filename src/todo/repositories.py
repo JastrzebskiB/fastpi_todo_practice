@@ -44,6 +44,27 @@ class BoardRepository(BaseRepository):
                 select(self.model).where(self.model.organization_id == organization_id)
             ).all()
 
+    def get_board_by_id_as_user(self, board_id: str, user_id: str) -> Board:
+        from src.auth.models import Organization
+
+        with self.sessionmaker() as session:
+            board = session.scalar(
+                select(self.model)
+                .options(
+                    joinedload(self.model.columns).joinedload(Column.tasks),
+                    joinedload(self.model.organization).joinedload(Organization.members),
+                )
+                .where(self.model.id == board_id)
+            )
+            if not user_id in [str(member.id) for member in board.organization.members]:
+                raise exceptions.AuthorizationFailedException
+        
+        return board
+
 
 class ColumnRepository(BaseRepository):
     model = Column
+
+
+class TaskRepository(BaseRepository):
+    model = Task

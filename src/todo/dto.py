@@ -24,6 +24,14 @@ class BoardResponse(BaseModel):
     columns: list["ColumnResponseFlat"]
 
 
+class BoardResponseFullDetails(BaseModel):
+    id: UUID4
+    organization_id: UUID4
+    name: str
+
+    columns: list["ColumnResponse"]
+
+
 # Column
 class CreateColumnPayload(BaseModel):
     board_id: UUID4
@@ -34,5 +42,23 @@ class CreateColumnPayload(BaseModel):
 class ColumnResponseFlat(BaseModel):
     id: UUID4
     board_id: UUID4
+    name: str
+    order: int
+
+
+class ColumnResponse(BaseModel):
+    id: UUID4
+    board_id: UUID4
+    name: str
+    order: int
+
+    tasks: list["TaskResponseFlat"]
+
+
+# Task
+class TaskResponseFlat(BaseModel):
+    id: UUID4
+    column_id: UUID4
+    assigned_to: UUID4 | None
     name: str
     order: int

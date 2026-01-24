@@ -14,9 +14,9 @@ from src.auth.repositories import (
     UserRepository,
 )
 from src.auth.services import OrganizationAccessRequestService, OrganizationService, UserService
-from src.todo.models import Board, Column
-from src.todo.repositories import BoardRepository, ColumnRepository
-from src.todo.services import BoardService, ColumnService
+from src.todo.models import Board, Column, Task
+from src.todo.repositories import BoardRepository, ColumnRepository, TaskRepository
+from src.todo.services import BoardService, ColumnService, TaskService
 
 
 TEST_DB_NAME = "fastapi_todo_test"
@@ -315,6 +315,12 @@ def truncate_column_table(sessionmaker):
         session.commit()
 
 
+def truncate_task_table(sessionmaker):
+    with sessionmaker() as session:
+        session.execute(text("TRUNCATE TABLE task RESTART IDENTITY CASCADE"))
+        session.commit()
+
+
 @fixture(scope="function")
 def test_board_repository(TestSession) -> BoardRepository:
     yield BoardRepository(TestSession)
@@ -341,6 +347,20 @@ def test_column_service(test_column_repository) -> ColumnService:
     yield ColumnService(repository=test_column_repository)
 
     # Cleanup done in test_column_repository
+
+
+@fixture(scope="function")
+def test_task_repository(TestSession) -> TaskRepository:
+    yield TaskRepository(TestSession)
+
+    truncate_task_table(TestSession)
+
+
+@fixture(scope="function")
+def test_task_service(test_task_repository) -> TaskService:
+    yield TaskService(repository=test_task_repository)
+
+    # Cleanup done in test_task_repository
 
 
 def create_test_board(
@@ -370,3 +390,28 @@ def create_test_column(
         session.refresh(column)
     
     return column
+
+
+def create_test_task(
+    TestSession: sessionmaker,
+    name: str,
+    column_id: str,
+    created_by: str,
+    order: int,
+    assigned_to: str | None = None,
+    description: str = ""
+) -> Task:
+    with TestSession() as session:
+        task = Task(
+            column_id=column_id, 
+            created_by=created_by, 
+            assigned_to=assigned_to, 
+            name=name,
+            order=order, 
+            description=description,
+        )
+        session.add(task)
+        session.commit()
+        session.refresh(task)
+    
+    return task

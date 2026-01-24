@@ -8,12 +8,15 @@ from .constants import DEFAULT_COLUMN_NAMES
 from .dto import (
     BoardResponse,
     BoardResponseFlat,
+    BoardResponseFullDetails,
     CreateBoardPayload,
     CreateColumnPayload,
     ColumnResponseFlat,
+    ColumnResponse,
+    TaskResponseFlat,
 )
-from .models import Board, Column
-from .repositories import BoardRepository, ColumnRepository
+from .models import Board, Column, Task
+from .repositories import BoardRepository, ColumnRepository, TaskRepository
 
 
 class BoardService:
@@ -38,7 +41,7 @@ class BoardService:
         board = self.repository.create(self.create_domain_board_instance(payload))
         columns = self.create_columns_for_new_board(str(board.id), me_id, payload, column_service)
 
-        return self.create_board_response(board, columns, column_service)
+        return self.create_board_response(board, columns)
 
     def create_columns_for_new_board(
         self, 
@@ -75,6 +78,24 @@ class BoardService:
             for board in self.repository.list_boards_for_organization(organization_id)
         ]
 
+    def get_board_by_id(
+        self,
+        board_id: str,
+        token: str,
+        column_service: "ColumnService",
+        task_service: "TaskService",
+        user_service: UserService,
+    ) -> BoardResponseFullDetails:
+        my_id = str(user_service.get_current_user(token).id)
+        board = self.repository.get_board_by_id_as_user(board_id, my_id)
+        # TODO: I don't like the inconsistency: in create_board_response we pass the list of columns
+        # but in create_column_response_full we pass task_service instead...
+        columns = [
+            column_service.create_column_response(column, task_service) for column in board.columns
+        ]
+
+        return self.create_board_response_full(board, columns)
+
     # Domain object manipulation
     def create_domain_board_instance(self, payload: CreateBoardPayload) -> Board:
         return Board(name=payload.name, organization_id=payload.organization_id)
@@ -94,9 +115,22 @@ class BoardService:
         self, 
         board: Board, 
         columns: list[ColumnResponseFlat],
-        column_service: "ColumnService",
     ) -> BoardResponse:
         return BoardResponse(
+            id=board.id,
+            organization_id=board.organization_id,
+            name=board.name,
+            columns=columns,
+        )
+
+    # TODO: We can probably just make the columns be either of the column types and use flat/regular
+    # dtos for Board
+    def create_board_response_full(
+        self, 
+        board: Board, 
+        columns: list[ColumnResponse],
+    ) -> BoardResponseFullDetails:
+        return BoardResponseFullDetails(
             id=board.id,
             organization_id=board.organization_id,
             name=board.name,
@@ -144,4 +178,34 @@ class ColumnService:
             board_id=column.board_id,
             name=column.name,
             order=column.order,
+        )
+    
+    def create_column_response(
+        self, 
+        column: Column, 
+        task_service: "TaskService",
+    ) -> ColumnResponse:
+        return ColumnResponse(
+            id=column.id,
+            board_id=column.board_id,
+            name=column.name,
+            order=column.order,
+            tasks=[task_service.create_task_response_flat(task) for task in column.tasks],
+        )
+
+
+class TaskService:
+    def __init__(self, repository: TaskRepository = Depends(TaskRepository)) -> None:
+        if isinstance(repository, DependsType):
+            repository = repository.dependency()
+        self.repository = repository
+
+    # Serialization
+    def create_task_response_flat(self, task: Task) -> TaskResponseFlat:
+        return TaskResponseFlat(
+            id=task.id,
+            column_id=task.column_id,
+            assigned_to=task.assigned_to,
+            name=task.name,
+            order=task.order,
         )

@@ -12,7 +12,7 @@ from src.auth.repositories import OrganizationRepository, UserRepository
 from src.auth.services import JWTService
 from src.auth.views import OrganizationAccessRequestService, OrganizationService, UserService
 from src.todo import constants as todo_constants
-from src.todo.services import BoardService, ColumnService
+from src.todo.services import BoardService, ColumnService, TaskService
 from src.main import app
 
 from tests.integration.conftest import (
@@ -20,6 +20,7 @@ from tests.integration.conftest import (
     create_test_column,
     create_test_organization_access_request, 
     create_test_organization,
+    create_test_task,
 ) 
 
 
@@ -1905,6 +1906,101 @@ class TestBoardsList:
 
         response = client.get(
             f"/todo/organizations/{str(test_organization.id)}/boards",
+            headers=generate_auth_headers(test_user.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.FORBIDDEN
+        assert response_json["detail"] == "You do not have the permission to perform this action"
+
+
+class TestBoardDetails:
+    def test_success(
+        self, 
+        TestSession,
+        test_board_service, 
+        test_column_service,
+        test_task_service,
+        test_user_service, 
+        test_organization_service,
+        test_organization,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
+        app.dependency_overrides[TaskService] = lambda: test_task_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization.id))
+        column_1 = create_test_column(TestSession, "Column 1", str(board.id), 1)
+        column_2 = create_test_column(TestSession, "Column 2", str(board.id), 1)
+        task_1 = create_test_task(
+            TestSession, 
+            "Task 1", 
+            str(column_1.id),
+            str(test_organization.owner_id),
+            order=2,
+            assigned_to=None,
+        )
+        task_2 = create_test_task(
+            TestSession, 
+            "Task 2", 
+            str(column_1.id),
+            str(test_organization.owner_id),
+            order=1,
+            assigned_to=None,
+        )
+        task_3 = create_test_task(
+            TestSession, 
+            "Task 3", 
+            str(column_2.id),
+            str(test_organization.owner_id),
+            order=1,
+            assigned_to=None,
+        )
+
+        response = client.get(
+            f"/todo/board/{str(board.id)}",
+            headers=generate_auth_headers(test_organization.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert response_json["organization_id"] == str(test_organization.id)
+        assert response_json["name"] == board.name
+        assert response_json["id"]
+        assert len(response_json["columns"]) == 2
+        assert len(response_json["columns"][0]["tasks"]) == 2
+        # Order intentional!
+        assert response_json["columns"][0]["tasks"][0]["name"] == task_2.name
+        assert response_json["columns"][0]["tasks"][1]["name"] == task_1.name
+        assert len(response_json["columns"][1]["tasks"]) == 1
+        assert response_json["columns"][1]["tasks"][0]["name"] == task_3.name
+
+
+    def test_fail_not_member_of_organization(
+        self, 
+        TestSession,
+        test_board_service, 
+        test_column_service,
+        test_task_service,
+        test_user_service, 
+        test_organization_service,
+        test_organization,
+        test_user,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
+        app.dependency_overrides[TaskService] = lambda: test_task_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        app.dependency_overrides[OrganizationService] = lambda: test_organization_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization.id))
+
+        response = client.get(
+            f"/todo/board/{str(board.id)}",
             headers=generate_auth_headers(test_user.email),
         )
         response_json = response.json()
