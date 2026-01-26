@@ -382,9 +382,10 @@ def create_test_column(
     name: str,
     board_id: str,
     order: int,
+    is_terminal: bool = False
 ) -> Column:
     with TestSession() as session:
-        column = Column(board_id=board_id, name=name, order=order)
+        column = Column(board_id=board_id, name=name, order=order, is_terminal=is_terminal)
         session.add(column)
         session.commit()
         session.refresh(column)

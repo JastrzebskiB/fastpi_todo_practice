@@ -37,6 +37,7 @@ class CreateColumnPayload(BaseModel):
     board_id: UUID4
     name: str
     order: int
+    is_terminal: bool = False
 
 
 class ColumnResponseFlat(BaseModel):
@@ -44,6 +45,7 @@ class ColumnResponseFlat(BaseModel):
     board_id: UUID4
     name: str
     order: int
+    is_terminal: bool
 
 
 class ColumnResponse(BaseModel):
@@ -51,6 +53,7 @@ class ColumnResponse(BaseModel):
     board_id: UUID4
     name: str
     order: int
+    is_terminal: bool
 
     tasks: list["TaskResponseFlat"]
 

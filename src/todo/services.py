@@ -4,7 +4,7 @@ from fastapi.params import Depends as DependsType
 from ..auth.services import OrganizationService, UserService
 from ..core import settings
 from ..core.exceptions import ValidationException
-from .constants import DEFAULT_COLUMN_NAMES
+from .constants import DEFAULT_COLUMNS
 from .dto import (
     BoardResponse,
     BoardResponseFlat,
@@ -54,10 +54,13 @@ class BoardService:
             columns_to_copy = self.repository.get_columns_for_board_id(
                 payload.use_columns_from_board_id, user_id
             )
-            column_names = [column.name for column in columns_to_copy]
-            columns = column_service.create_columns_for_board_id(board_id, column_names)
+            column_data = {
+                column.name: {"is_terminal": column.is_terminal} 
+                for column in columns_to_copy
+            }
+            columns = column_service.create_columns_for_board_id(board_id, column_data)
         elif payload.add_default_columns:
-            columns = column_service.create_columns_for_board_id(board_id, DEFAULT_COLUMN_NAMES)
+            columns = column_service.create_columns_for_board_id(board_id, DEFAULT_COLUMNS)
         else:
             columns = []
         
@@ -95,6 +98,15 @@ class BoardService:
         ]
 
         return self.create_board_response_full(board, columns)
+
+    def delete_board(
+        self, 
+        board_id: str, 
+        token: str, 
+        user_service: UserService,
+    ) -> tuple[bool, str]:
+        my_id = str(user_service.get_current_user(token).id)
+        return self.repository.delete_board(board_id, my_id)
 
     # Domain object manipulation
     def create_domain_board_instance(self, payload: CreateBoardPayload) -> Board:
@@ -147,11 +159,11 @@ class ColumnService:
     def create_columns_for_board_id(
         self, 
         board_id: str, 
-        column_names: list[str]
+        column_data: dict[str, dict]
     ) -> list[ColumnResponseFlat]:
         columns = [
             self.repository.create(column) 
-            for column in self.create_domain_column_instances_for_board_id(board_id, column_names)
+            for column in self.create_domain_column_instances_for_board_id(board_id, column_data)
         ]
         return [self.create_column_response_flat(column) for column in columns]
 
@@ -159,13 +171,18 @@ class ColumnService:
     def create_domain_column_instances_for_board_id(
         self, 
         board_id: str, 
-        column_names: list[str],
+        column_data: dict[str, dict],
     ) -> list[Column]:
         return [
             self.create_domain_column_instance(
-                CreateColumnPayload(board_id=board_id, name=name, order=i)
+                CreateColumnPayload(
+                    board_id=board_id, 
+                    name=name, 
+                    order=i, 
+                    is_terminal=column_data[name]["is_terminal"],
+                )
             ) 
-            for i, name in enumerate(column_names)
+            for i, name in enumerate(column_data)
         ]
 
     def create_domain_column_instance(self, payload: CreateColumnPayload) -> Column:
@@ -178,6 +195,7 @@ class ColumnService:
             board_id=column.board_id,
             name=column.name,
             order=column.order,
+            is_terminal=column.is_terminal,
         )
     
     def create_column_response(
@@ -190,6 +208,7 @@ class ColumnService:
             board_id=column.board_id,
             name=column.name,
             order=column.order,
+            is_terminal=column.is_terminal,
             tasks=[task_service.create_task_response_flat(task) for task in column.tasks],
         )
 

@@ -1558,7 +1558,7 @@ class TestBoardCreate:
         assert len(response_json["columns"]) == 5
         assert [
             column["name"] for column in response_json["columns"]
-        ] == todo_constants.DEFAULT_COLUMN_NAMES
+        ] == list(todo_constants.DEFAULT_COLUMNS)
 
     def test_success_with_defaults_as_member(
         self, 
@@ -1593,7 +1593,7 @@ class TestBoardCreate:
         assert len(response_json["columns"]) == 5
         assert [
             column["name"] for column in response_json["columns"]
-        ] == todo_constants.DEFAULT_COLUMN_NAMES
+        ] == list(todo_constants.DEFAULT_COLUMNS)
 
     def test_success_copying_columns_as_owner(
         self, 
@@ -1940,7 +1940,7 @@ class TestBoardDetails:
             "Task 1", 
             str(column_1.id),
             str(test_organization.owner_id),
-            order=2,
+            order=3,
             assigned_to=None,
         )
         task_2 = create_test_task(
@@ -2002,6 +2002,106 @@ class TestBoardDetails:
         response = client.get(
             f"/todo/board/{str(board.id)}",
             headers=generate_auth_headers(test_user.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.FORBIDDEN
+        assert response_json["detail"] == "You do not have the permission to perform this action"
+
+
+class TestBoardDelete: 
+    def test_success_with_empty_columns(
+        self, 
+        TestSession, 
+        test_board_service, 
+        test_user_service, 
+        test_organization,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization.id))
+        create_test_column(TestSession, "Column 1", str(board.id), 1)
+        create_test_column(TestSession, "Column 2 Terminal", str(board.id), 2, True)
+
+        response = client.delete(
+            f"/todo/board/{str(board.id)}",
+            headers=generate_auth_headers(test_organization.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert response_json["detail"] == "Board deleted successfully"
+
+    def test_success_with_tasks_in_terminal_column(
+        self, 
+        TestSession, 
+        test_board_service, 
+        test_user_service, 
+        test_organization,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization.id))
+        create_test_column(TestSession, "Column 1", str(board.id), 1)
+        terminal = create_test_column(TestSession, "Column 2 Terminal", str(board.id), 2, True)
+        create_test_task(TestSession, "Task", str(terminal.id), str(test_organization.owner_id), 1)
+        create_test_task(TestSession, "Task", str(terminal.id), str(test_organization.owner_id), 2)
+
+        response = client.delete(
+            f"/todo/board/{str(board.id)}",
+            headers=generate_auth_headers(test_organization.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert response_json["detail"] == "Board deleted successfully"
+
+    def test_fail_tasks_in_non_terminal_column(
+        self, 
+        TestSession, 
+        test_board_service, 
+        test_user_service, 
+        test_organization,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization.id))
+        column = create_test_column(TestSession, "Column 1", str(board.id), 1)
+        terminal = create_test_column(TestSession, "Column 2 Terminal", str(board.id), 2, True)
+        create_test_task(TestSession, "Task", str(column.id), str(test_organization.owner_id), 1)
+        create_test_task(TestSession, "Task", str(terminal.id), str(test_organization.owner_id), 1)
+
+        response = client.delete(
+            f"/todo/board/{str(board.id)}",
+            headers=generate_auth_headers(test_organization.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
+        assert response_json["detail"] == "Cannot delete a board that has unfinished tasks"
+
+    def test_fail_not_organization_owner(
+        self, 
+        TestSession, 
+        test_board_service, 
+        test_user_service, 
+        test_organization_with_members,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization_with_members.id))
+
+        response = client.delete(
+            f"/todo/board/{str(board.id)}",
+            headers=generate_auth_headers(test_organization_with_members.members[0].email),
         )
         response_json = response.json()
 

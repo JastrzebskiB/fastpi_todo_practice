@@ -47,3 +47,15 @@ async def board_details(
     return service.get_board_by_id(
         board_id, token, column_service, task_service, user_service,
     )
+
+
+@router.delete("/board/{board_id}", tags=["boards"])
+async def board_delete(
+    board_id: str,
+    token: str = Depends(oauth2_scheme),
+    service: BoardService = Depends(BoardService),
+    user_service: UserService = Depends(UserService),
+):
+    message, deleted = service.delete_board(board_id, token, user_service)
+    status_code = status.HTTP_200_OK if deleted else status.HTTP_422_UNPROCESSABLE_CONTENT
+    return JSONResponse(status_code=status_code, content={"detail": message})

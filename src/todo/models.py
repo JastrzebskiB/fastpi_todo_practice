@@ -35,6 +35,7 @@ class Column(Base, CommonFieldsMixin):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(nullable=False)
     order: Mapped[int] = mapped_column(nullable=False, default=0)
+    is_terminal: Mapped[bool] = mapped_column(nullable=False, default=False)
 
     board_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("board.id"), nullable=False)
     board: Mapped["Board"] = relationship(back_populates="columns")

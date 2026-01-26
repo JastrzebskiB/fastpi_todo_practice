@@ -45,21 +45,48 @@ class BoardRepository(BaseRepository):
             ).all()
 
     def get_board_by_id_as_user(self, board_id: str, user_id: str) -> Board:
-        from src.auth.models import Organization
-
         with self.sessionmaker() as session:
-            board = session.scalar(
-                select(self.model)
-                .options(
-                    joinedload(self.model.columns).joinedload(Column.tasks),
-                    joinedload(self.model.organization).joinedload(Organization.members),
-                )
-                .where(self.model.id == board_id)
-            )
+            board = self.session_get_board_by_id(session, board_id, with_members=True)
             if not user_id in [str(member.id) for member in board.organization.members]:
                 raise exceptions.AuthorizationFailedException
-        
         return board
+
+    def session_get_board_by_id(
+        self, 
+        session: SessionType, 
+        board_id: str, 
+        with_members: bool = False,
+    ) -> Board:
+        from src.auth.models import Organization
+
+        options = [joinedload(self.model.columns).joinedload(Column.tasks)]
+        if with_members:
+            options.append(joinedload(self.model.organization).joinedload(Organization.members))
+        else:
+            options.append(joinedload(self.model.organization))
+
+        return session.scalar(select(self.model).options(*options).where(self.model.id == board_id))
+
+    def delete_board(self, board_id: str, user_id: str) -> tuple[str, bool]:
+        with self.sessionmaker() as session:
+            board = self.session_get_board_by_id(session, board_id)
+            if not user_id == str(board.organization.owner_id):
+                raise exceptions.AuthorizationFailedException
+
+            existing_tasks = []
+            for column in board.columns:
+                if not column.is_terminal:
+                    existing_tasks.extend(column.tasks)
+            if existing_tasks:
+                return "Cannot delete a board that has unfinished tasks", False
+            
+            for column in board.columns:
+                for task in column.tasks:
+                    session.delete(task)
+                session.delete(column)
+            session.delete(board)
+            session.commit()
+        return "Board deleted successfully", True
 
 
 class ColumnRepository(BaseRepository):

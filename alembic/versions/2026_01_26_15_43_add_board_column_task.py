@@ -1,8 +1,8 @@
 """Add todo models: Board, Column, Task
 
-Revision ID: 1b17ce176041
+Revision ID: a9a44fd6999f
 Revises: 0d3301d6795c
-Create Date: 2026-01-22 14:58:54.450539
+Create Date: 2026-01-26 15:43:32.587203
 
 """
 from typing import Sequence, Union
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision: str = '1b17ce176041'
+revision: str = 'a9a44fd6999f'
 down_revision: Union[str, Sequence[str], None] = '0d3301d6795c'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -35,6 +35,7 @@ def upgrade() -> None:
     sa.Column('id', sa.Uuid(), nullable=False),
     sa.Column('name', sa.String(), nullable=False),
     sa.Column('order', sa.Integer(), nullable=False),
+    sa.Column('is_terminal', sa.Boolean(), nullable=False),
     sa.Column('board_id', sa.Uuid(), nullable=False),
     sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
     sa.Column('updated_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
@@ -53,8 +54,8 @@ def upgrade() -> None:
     sa.Column('created_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
     sa.Column('updated_at', sa.DateTime(), server_default=sa.text('CURRENT_TIMESTAMP'), nullable=False),
     sa.ForeignKeyConstraint(['assigned_to'], ['user.id'], ),
-    sa.ForeignKeyConstraint(['created_by'], ['user.id'], ),
     sa.ForeignKeyConstraint(['column_id'], ['column.id'], ),
+    sa.ForeignKeyConstraint(['created_by'], ['user.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     # ### end Alembic commands ###
