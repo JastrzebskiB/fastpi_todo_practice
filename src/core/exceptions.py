@@ -22,10 +22,7 @@ ExpiredJWTException = HTTPException(
     headers={"WWW-Authenticate": "Bearer"},
 )
 # TODO: Consider if those and ValidationException for not founds are needed
-UserNotFound = HTTPException(
-    status_code=status.HTTP_404_NOT_FOUND,
-    detail="User not found",
-)
+UserNotFound = HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 OrganizationNotFound = HTTPException(
     status_code=status.HTTP_404_NOT_FOUND,
     detail="Organization not found",
@@ -34,6 +31,9 @@ OrganizationAccessRequestNotFound = HTTPException(
     status_code=status.HTTP_404_NOT_FOUND,
     detail="OrganizationAccessRequest not found",
 )
+BoardNotFound = HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Board not found")
+ColumnNotFound = HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Column not found")
+TaskNotFound = HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
 
 
 class ValidationException(HTTPException):

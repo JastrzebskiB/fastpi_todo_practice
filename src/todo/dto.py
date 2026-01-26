@@ -1,4 +1,8 @@
-from pydantic import BaseModel, UUID4
+from typing import Any  
+
+from pydantic import BaseModel, UUID4, model_validator
+
+from ..core import exceptions
 
 
 # Board
@@ -38,6 +42,26 @@ class CreateColumnPayload(BaseModel):
     name: str
     order: int
     is_terminal: bool = False
+
+
+class PartialUpdateColumnPayload(BaseModel):
+    name: str | None = None
+    order: int | None = None
+    is_terminal: bool | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_at_least_one_field_present(cls, data: Any) -> Any:
+        fields = ["name", "order", "is_terminal"]
+        at_least_one_data_present = False
+        for field in fields:
+            if data.get(field) is not None:
+                at_least_one_data_present = True
+        
+        if not at_least_one_data_present:
+            raise exceptions.ValidationException(f"At least one of {fields} needs to be present")
+
+        return data
 
 
 class ColumnResponseFlat(BaseModel):

@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 
 from ..auth.services import UserService, OrganizationService
 from ..core.auth import oauth2_scheme
-from .dto import CreateBoardPayload
+from .dto import CreateBoardPayload, PartialUpdateColumnPayload
 from .services import BoardService, ColumnService, TaskService
 
 router = APIRouter(prefix="/todo", tags=["todo"])
@@ -59,3 +59,15 @@ async def board_delete(
     message, deleted = service.delete_board(board_id, token, user_service)
     status_code = status.HTTP_200_OK if deleted else status.HTTP_422_UNPROCESSABLE_CONTENT
     return JSONResponse(status_code=status_code, content={"detail": message})
+
+
+# Columns
+@router.patch("/column/{column_id}", tags=["columns"])
+async def column_partial_update(
+    payload: PartialUpdateColumnPayload,
+    column_id: str,
+    token: str = Depends(oauth2_scheme),
+    service: ColumnService = Depends(ColumnService),
+    user_service: UserService = Depends(UserService),
+):
+    return service.partial_update_column(payload, column_id, token, user_service)

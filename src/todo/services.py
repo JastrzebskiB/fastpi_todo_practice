@@ -13,6 +13,7 @@ from .dto import (
     CreateColumnPayload,
     ColumnResponseFlat,
     ColumnResponse,
+    PartialUpdateColumnPayload,
     TaskResponseFlat,
 )
 from .models import Board, Column, Task
@@ -187,6 +188,24 @@ class ColumnService:
 
     def create_domain_column_instance(self, payload: CreateColumnPayload) -> Column:
         return Column(name=payload.name, order=payload.order, board_id=payload.board_id)
+
+    def partial_update_column(
+        self, 
+        payload: PartialUpdateColumnPayload,
+        column_id: str,
+        token: str,
+        user_service: UserService
+    ) -> ColumnResponseFlat:
+        my_id = str(user_service.get_current_user(token).id)
+        return self.create_column_response_flat(
+            self.repository.partial_update_column(
+                column_id=column_id, 
+                user_id=my_id,
+                name=payload.name, 
+                order=payload.order,
+                is_terminal=payload.is_terminal,
+            )
+        )
 
     # Serialization
     def create_column_response_flat(self, column: Column) -> ColumnResponseFlat:

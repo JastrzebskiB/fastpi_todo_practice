@@ -10,17 +10,8 @@ class BoardRepository(BaseRepository):
     model = Board
 
     def get_columns_for_board_id(self, board_id: str, user_id: str) -> list[Column]:
-        from src.auth.models import Organization
-
         with self.sessionmaker() as session:
-            board = session.scalar(
-                select(self.model)
-                .options(
-                    joinedload(self.model.columns),
-                    joinedload(self.model.organization).joinedload(Organization.members),
-                )
-                .where(self.model.id == board_id)
-            )
+            board = self.session_get_board_by_id(session, board_id, with_members=True)
             if not user_id in [str(member.id) for member in board.organization.members]:
                 raise exceptions.AuthorizationFailedException
         
@@ -65,11 +56,19 @@ class BoardRepository(BaseRepository):
         else:
             options.append(joinedload(self.model.organization))
 
-        return session.scalar(select(self.model).options(*options).where(self.model.id == board_id))
+        board = session.scalar(
+            select(self.model).options(*options).where(self.model.id == board_id)
+        )
+        if not board:
+            raise exceptions.BoardNotFound
+        return board
 
     def delete_board(self, board_id: str, user_id: str) -> tuple[str, bool]:
         with self.sessionmaker() as session:
             board = self.session_get_board_by_id(session, board_id)
+
+
+
             if not user_id == str(board.organization.owner_id):
                 raise exceptions.AuthorizationFailedException
 
@@ -92,6 +91,41 @@ class BoardRepository(BaseRepository):
 class ColumnRepository(BaseRepository):
     model = Column
 
+    def partial_update_column(
+        self, 
+        column_id: str,
+        user_id: str,
+        name: str | None,
+        order: int | None,
+        is_terminal: bool | None,
+    ) -> Column:
+        with self.sessionmaker() as session:
+            # TODO: wait, instead of checking if user can make the changes like this maybe 
+            # I could do a joined query and use the user_id as a part of it?
+            column = session.scalar(
+                select(self.model)
+                .options(joinedload(self.model.board).joinedload(Board.organization))
+                .where(self.model.id == column_id)
+            )
+
+            if not column:
+                raise exception.ColumnNotFound
+
+            if not user_id == str(column.board.organization.owner_id):
+                raise exceptions.AuthorizationFailedException
+
+            if name is not None:
+                column.name = name
+            if order is not None:
+                column.order = order
+            if is_terminal is not None:
+                column.is_terminal = is_terminal
+
+            session.add(column)
+            session.commit()
+            session.refresh(column)
+        
+        return column
 
 class TaskRepository(BaseRepository):
     model = Task

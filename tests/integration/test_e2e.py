@@ -12,6 +12,7 @@ from src.auth.repositories import OrganizationRepository, UserRepository
 from src.auth.services import JWTService
 from src.auth.views import OrganizationAccessRequestService, OrganizationService, UserService
 from src.todo import constants as todo_constants
+from src.todo.dto import PartialUpdateColumnPayload
 from src.todo.services import BoardService, ColumnService, TaskService
 from src.main import app
 
@@ -2102,6 +2103,108 @@ class TestBoardDelete:
         response = client.delete(
             f"/todo/board/{str(board.id)}",
             headers=generate_auth_headers(test_organization_with_members.members[0].email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.FORBIDDEN
+        assert response_json["detail"] == "You do not have the permission to perform this action"
+
+
+class TestColumnUpdate:
+    # test success for each combination of the fields
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            PartialUpdateColumnPayload(name="Terminal 1337", order=1337, is_terminal=True),
+            PartialUpdateColumnPayload(name="1337", order=1337),
+            PartialUpdateColumnPayload(name="Terminal", is_terminal=True),
+            PartialUpdateColumnPayload(order=1337, is_terminal=True),
+            PartialUpdateColumnPayload(name="New"),
+            PartialUpdateColumnPayload(order=1337),
+            PartialUpdateColumnPayload(is_terminal=True),
+        ]
+    )
+    def test_success(
+        self,
+        TestSession,
+        test_column_service,
+        test_user_service,
+        test_organization,
+        payload,
+    ):
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization.id))
+        column = create_test_column(
+            TestSession, name="Unchanged name", board_id=str(board.id), order=1, is_terminal=False
+        )
+
+        response = client.patch(
+            f"/todo/column/{str(column.id)}",
+            json=payload.model_dump(),
+            headers=generate_auth_headers(test_organization.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        if payload.name is not None:
+            assert response_json["name"] == payload.name
+        if payload.order is not None:
+            assert response_json["order"] == payload.order
+        if payload.is_terminal is not None:
+            assert response_json["is_terminal"] == payload.is_terminal
+
+    def test_fail_bad_payload(
+        self,
+        TestSession,
+        test_column_service,
+        test_user_service,
+        test_organization,
+    ):
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization.id))
+        column = create_test_column(
+            TestSession, name="Unchanged name", board_id=str(board.id), order=1, is_terminal=False
+        )
+
+        response = client.patch(
+            f"/todo/column/{str(column.id)}",
+            json={},
+            headers=generate_auth_headers(test_organization.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
+        assert response_json["detail"] == (
+            "At least one of ['name', 'order', 'is_terminal'] needs to be present"
+        )
+
+    def test_fail_bad_payload(
+        self,
+        TestSession,
+        test_column_service,
+        test_user_service,
+        test_organization,
+        test_user
+    ):
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization.id))
+        column = create_test_column(
+            TestSession, name="Unchanged name", board_id=str(board.id), order=1, is_terminal=False
+        )
+
+        response = client.patch(
+            f"/todo/column/{str(column.id)}",
+            json={"name": "New name"},
+            headers=generate_auth_headers(test_user.email),
         )
         response_json = response.json()
 
