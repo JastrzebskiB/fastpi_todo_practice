@@ -21,7 +21,6 @@ ExpiredJWTException = HTTPException(
     detail="Authentication token has expired",
     headers={"WWW-Authenticate": "Bearer"},
 )
-# TODO: Consider if those and ValidationException for not founds are needed
 UserNotFound = HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 OrganizationNotFound = HTTPException(
     status_code=status.HTTP_404_NOT_FOUND,

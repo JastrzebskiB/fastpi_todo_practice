@@ -323,7 +323,6 @@ class OrganizationAccessRequestRepository(BaseRepository):
         status_where_param: BinaryExpression | BooleanClauseList,
     ) -> list[OrganizationAccessRequest]:
         with self.sessionmaker() as session:
-            # TODO: Should the repository be passed here as a dependency to loosen the coupling?
             organizations = OrganizationRepository().session_get_organizations_with_owner_id(
                 session, user_id
             )

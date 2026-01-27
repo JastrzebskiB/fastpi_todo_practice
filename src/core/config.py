@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     DB_PASSWORD: str
     # JWT
     JWT_SECRET_KEY: str
-    JWT_ALGORITHM: str  # TODO: make this an enum?
+    JWT_ALGORITHM: str
     JWT_TOKEN_EXPIRY_MINUTES: int
     # AUTH
     ORGANIZATION_ACCESS_REQUEST_RESUBMISSION_LIMIT_DAYS: int

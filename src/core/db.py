@@ -55,14 +55,6 @@ class BaseRepository:
             sessionmaker = sessionmaker.dependency()
         self.sessionmaker = sessionmaker
 
-    # TODO: Remove this before "release", it's just added for ease of development
-    def get_first(self, order_by_created_at: bool = True) -> Base:
-        with self.sessionmaker() as session:
-            query = session.query(self.model).order_by(self.model.created_at)
-            if order_by_created_at and hasattr(self.model, "created_at"):
-                query = query.order_by(self.model.created_at)
-            return query.first() 
-
     def refresh(self, model_instance: Base, attribute_names: list[str] | None = None) -> None:
         with self.sessionmaker() as session:
             session.refresh(model_instance, attribute_names)
@@ -74,19 +66,6 @@ class BaseRepository:
                 session.add(model_instance)
                 session.commit()
                 session.refresh(model_instance, attribute_names=attribute_names)
-            except Exception as e:  # Intentional catch-all - we want a rollback for ALL exceptions
-                session.rollback()
-                raise e
-        return model_instance
-
-    # TODO: will probably need attribute_names?
-    # TODO: this doesn't work due to objects being outside of session scope when modifying the 
-    # fields
-    def update(self, model_instance: Base) -> Base:
-        with self.sessionmaker() as session:
-            try:
-                session.add(model_instance)
-                session.commit()
             except Exception as e:  # Intentional catch-all - we want a rollback for ALL exceptions
                 session.rollback()
                 raise e

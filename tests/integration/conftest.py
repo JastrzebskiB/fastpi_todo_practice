@@ -44,7 +44,6 @@ def test_db(db_name=TEST_DB_NAME) -> str:
             drop_test_db(db_name, connection)
 
 
-# TODO: Consider writing a contextmanager class that would create and drop the db?
 def check_if_db_exists(db_name: str, connection: Connection) -> bool:
     query = text(f"SELECT 1 FROM pg_database WHERE datname='{db_name}'")
     return bool(connection.execute(query).first())
