@@ -29,6 +29,11 @@ class BoardRepository(BaseRepository):
                 ).select()
             )
 
+    def check_user_id_owns_board_id(self, user_id: str, board_id: str) -> bool:
+        with self.sessionmaker() as session:
+            board = self.session_get_board_by_id(session, board_id)
+            return user_id == str(board.organization.owner_id)
+
     def list_boards_for_organization(self, organization_id: str) -> list[Board]:
         with self.sessionmaker() as session:
             return session.scalars(
@@ -67,8 +72,6 @@ class BoardRepository(BaseRepository):
         with self.sessionmaker() as session:
             board = self.session_get_board_by_id(session, board_id)
 
-
-
             if not user_id == str(board.organization.owner_id):
                 raise exceptions.AuthorizationFailedException
 
@@ -90,6 +93,17 @@ class BoardRepository(BaseRepository):
 
 class ColumnRepository(BaseRepository):
     model = Column
+
+    def check_name_unique_in_board(self, name: str, board_id: str) -> bool:
+        return not self.check_name_exists_in_board(name, board_id)
+    
+    def check_name_exists_in_board(self, name: str, board_id: str) -> bool:
+        with self.sessionmaker() as session:
+            return session.scalar(
+                exists()
+                .where(self.model.board_id == board_id, self.model.name == name)
+                .select()
+            )
 
     def partial_update_column(
         self, 

@@ -3,7 +3,7 @@ from fastapi.params import Depends as DependsType
 
 from ..auth.services import OrganizationService, UserService
 from ..core import settings
-from ..core.exceptions import ValidationException
+from ..core.exceptions import AuthorizationFailedException, ValidationException
 from .constants import DEFAULT_COLUMNS
 from .dto import (
     BoardResponse,
@@ -35,6 +35,7 @@ class BoardService:
         organization_service: OrganizationService,
     ) -> BoardResponseFlat:
         me_id = str(user_service.get_current_user(token).id)
+        # TODO: Only org owner should be able to create a board
         organization_service.validate_user_id_belongs_to_organization(
             payload.organization_id, me_id
         )
@@ -55,10 +56,12 @@ class BoardService:
             columns_to_copy = self.repository.get_columns_for_board_id(
                 payload.use_columns_from_board_id, user_id
             )
-            column_data = {
-                column.name: {"is_terminal": column.is_terminal} 
+            column_data = [
+                CreateColumnPayload(
+                    name=column.name, order=column.order, is_terminal=column.is_terminal
+                ) 
                 for column in columns_to_copy
-            }
+            ]
             columns = column_service.create_columns_for_board_id(board_id, column_data)
         elif payload.add_default_columns:
             columns = column_service.create_columns_for_board_id(board_id, DEFAULT_COLUMNS)
@@ -120,6 +123,10 @@ class BoardService:
         ):
             raise ValidationException(f"This organization already has a Board named {payload.name}")
 
+    def validate_user_owns_board(self, user_id: str, board_id: str) -> None:
+        if not self.repository.check_user_id_owns_board_id(user_id, board_id):
+            raise AuthorizationFailedException
+
     # Serialization
     def create_board_response_flat(self, board: Board) -> BoardResponseFlat:
         return BoardResponseFlat(id=board.id,name=board.name,organization_id=board.organization_id)
@@ -157,37 +164,29 @@ class ColumnService:
             repository = repository.dependency()
         self.repository = repository
 
+    def create_column(
+        self, 
+        payload: CreateBoardPayload, 
+        board_id: str, 
+        token: str, 
+        board_service: BoardService,
+        user_service: UserService,
+    ) -> ColumnResponseFlat:
+        my_id = str(user_service.get_current_user(token).id)
+        board_service.validate_user_owns_board(my_id, board_id)
+        self.validate_column_name_unique_in_board(payload.name, board_id)
+        return self.create_columns_for_board_id(board_id, [payload])
+
     def create_columns_for_board_id(
         self, 
         board_id: str, 
-        column_data: dict[str, dict]
+        payloads: list[CreateColumnPayload],
     ) -> list[ColumnResponseFlat]:
         columns = [
             self.repository.create(column) 
-            for column in self.create_domain_column_instances_for_board_id(board_id, column_data)
+            for column in self.create_domain_column_instances_for_board_id(board_id, payloads)
         ]
         return [self.create_column_response_flat(column) for column in columns]
-
-    # Domain object manipulation
-    def create_domain_column_instances_for_board_id(
-        self, 
-        board_id: str, 
-        column_data: dict[str, dict],
-    ) -> list[Column]:
-        return [
-            self.create_domain_column_instance(
-                CreateColumnPayload(
-                    board_id=board_id, 
-                    name=name, 
-                    order=i, 
-                    is_terminal=column_data[name]["is_terminal"],
-                )
-            ) 
-            for i, name in enumerate(column_data)
-        ]
-
-    def create_domain_column_instance(self, payload: CreateColumnPayload) -> Column:
-        return Column(name=payload.name, order=payload.order, board_id=payload.board_id)
 
     def partial_update_column(
         self, 
@@ -206,6 +205,29 @@ class ColumnService:
                 is_terminal=payload.is_terminal,
             )
         )
+
+    # Domain object manipulation
+    def create_domain_column_instances_for_board_id(
+        self, 
+        board_id: str, 
+        payloads: list[CreateColumnPayload],
+    ) -> list[Column]:
+        return [
+            self.create_domain_column_instance(board_id, payload) for payload in payloads
+        ]
+
+    def create_domain_column_instance(self, board_id: str, payload: CreateColumnPayload) -> Column:
+        return Column(
+            name=payload.name, 
+            order=payload.order, 
+            board_id=board_id, 
+            is_terminal=payload.is_terminal,
+        )
+
+    # Validation
+    def validate_column_name_unique_in_board(self, name: str, board_id: str) -> None:
+        if not self.repository.check_name_unique_in_board(name, board_id):
+            raise ValidationException(f"Column named {name} already exists for this board")
 
     # Serialization
     def create_column_response_flat(self, column: Column) -> ColumnResponseFlat:

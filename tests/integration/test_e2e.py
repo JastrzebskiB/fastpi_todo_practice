@@ -1559,7 +1559,7 @@ class TestBoardCreate:
         assert len(response_json["columns"]) == 5
         assert [
             column["name"] for column in response_json["columns"]
-        ] == list(todo_constants.DEFAULT_COLUMNS)
+        ] == [payload.name for payload in todo_constants.DEFAULT_COLUMNS]
 
     def test_success_with_defaults_as_member(
         self, 
@@ -1594,7 +1594,7 @@ class TestBoardCreate:
         assert len(response_json["columns"]) == 5
         assert [
             column["name"] for column in response_json["columns"]
-        ] == list(todo_constants.DEFAULT_COLUMNS)
+        ] == [payload.name for payload in todo_constants.DEFAULT_COLUMNS]
 
     def test_success_copying_columns_as_owner(
         self, 
@@ -2110,6 +2110,92 @@ class TestBoardDelete:
         assert response_json["detail"] == "You do not have the permission to perform this action"
 
 
+class TestColumnCreate:
+    def test_success(
+        self,
+        TestSession,
+        test_column_service,
+        test_board_service,
+        test_user_service,
+        test_organization,
+    ):
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization.id))
+        payload = {"name": "New column", "order": 1337, "is_terminal": True}
+
+        response = client.post(
+            f"/todo/board/{str(board.id)}/columns",
+            json=payload,
+            headers=generate_auth_headers(test_organization.owner.email)
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert response_json[0]["name"] == payload["name"]
+        assert response_json[0]["board_id"] == str(board.id)
+        assert response_json[0]["order"] == payload["order"]
+        assert response_json[0]["is_terminal"] == payload["is_terminal"]
+
+    def test_fail_not_an_owner_of_organization(
+        self,
+        TestSession,
+        test_column_service,
+        test_board_service,
+        test_user_service,
+        test_organization,
+        test_user,
+    ):
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization.id))
+        payload = {"name": "New column", "order": 1337, "is_terminal": True}
+
+        response = client.post(
+            f"/todo/board/{str(board.id)}/columns",
+            json=payload,
+            headers=generate_auth_headers(test_user.email)
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.FORBIDDEN
+        assert response_json["detail"] == "You do not have the permission to perform this action" 
+
+    def test_fail_column_name_not_unique(
+        self,
+        TestSession,
+        test_column_service,
+        test_board_service,
+        test_user_service,
+        test_organization,
+    ):
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization.id))
+        column = create_test_column(TestSession, "Existing", str(board.id), 0)
+        payload = {"name": column.name, "order": 1337, "is_terminal": True}
+
+        response = client.post(
+            f"/todo/board/{str(board.id)}/columns",
+            json=payload,
+            headers=generate_auth_headers(test_organization.owner.email)
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
+        assert response_json["detail"] == (
+            f"Column named {column.name} already exists for this board" 
+        )
+
 class TestColumnUpdate:
     # test success for each combination of the fields
     @pytest.mark.parametrize(
@@ -2184,13 +2270,13 @@ class TestColumnUpdate:
             "At least one of ['name', 'order', 'is_terminal'] needs to be present"
         )
 
-    def test_fail_bad_payload(
+    def test_fail_not_an_owner_of_organization(
         self,
         TestSession,
         test_column_service,
         test_user_service,
         test_organization,
-        test_user
+        test_user,
     ):
         app.dependency_overrides[ColumnService] = lambda: test_column_service
         app.dependency_overrides[UserService] = lambda: test_user_service

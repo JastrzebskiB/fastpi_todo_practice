@@ -38,7 +38,6 @@ class BoardResponseFullDetails(BaseModel):
 
 # Column
 class CreateColumnPayload(BaseModel):
-    board_id: UUID4
     name: str
     order: int
     is_terminal: bool = False

@@ -3,7 +3,7 @@ from fastapi.responses import JSONResponse
 
 from ..auth.services import UserService, OrganizationService
 from ..core.auth import oauth2_scheme
-from .dto import CreateBoardPayload, PartialUpdateColumnPayload
+from .dto import CreateBoardPayload, CreateColumnPayload, PartialUpdateColumnPayload
 from .services import BoardService, ColumnService, TaskService
 
 router = APIRouter(prefix="/todo", tags=["todo"])
@@ -62,6 +62,18 @@ async def board_delete(
 
 
 # Columns
+@router.post("/board/{board_id}/columns", tags=["columns"])
+async def column_create(
+    payload: CreateColumnPayload,
+    board_id: str,
+    token: str = Depends(oauth2_scheme),
+    service: ColumnService = Depends(ColumnService),
+    board_service: BoardService = Depends(BoardService),
+    user_service: UserService = Depends(UserService),
+):
+    return service.create_column(payload, board_id, token, board_service, user_service)
+
+
 @router.patch("/column/{column_id}", tags=["columns"])
 async def column_partial_update(
     payload: PartialUpdateColumnPayload,
