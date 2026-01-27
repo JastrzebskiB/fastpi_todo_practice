@@ -206,6 +206,15 @@ class ColumnService:
             )
         )
 
+    def delete_column(
+        self,
+        column_id: str,
+        token: str,
+        user_service: UserService,
+    ) -> tuple[str, bool]:
+        my_id = str(user_service.get_current_user(token).id)
+        return self.repository.delete_column(column_id, my_id)
+
     # Domain object manipulation
     def create_domain_column_instances_for_board_id(
         self, 

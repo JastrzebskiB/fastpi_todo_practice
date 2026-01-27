@@ -114,19 +114,7 @@ class ColumnRepository(BaseRepository):
         is_terminal: bool | None,
     ) -> Column:
         with self.sessionmaker() as session:
-            # TODO: wait, instead of checking if user can make the changes like this maybe 
-            # I could do a joined query and use the user_id as a part of it?
-            column = session.scalar(
-                select(self.model)
-                .options(joinedload(self.model.board).joinedload(Board.organization))
-                .where(self.model.id == column_id)
-            )
-
-            if not column:
-                raise exception.ColumnNotFound
-
-            if not user_id == str(column.board.organization.owner_id):
-                raise exceptions.AuthorizationFailedException
+            column = self.session_get_column_by_id_for_owner(session, column_id, user_id)
 
             if name is not None:
                 column.name = name
@@ -140,6 +128,48 @@ class ColumnRepository(BaseRepository):
             session.refresh(column)
         
         return column
+
+    def delete_column(self, column_id: str, user_id: str) -> tuple[str, bool]:
+        with self.sessionmaker() as session:
+            column = self.session_get_column_by_id_for_owner(
+                session, column_id, user_id, with_tasks=True
+            )
+            
+            if not column.is_terminal and column.tasks:
+                return "Cannot delete a column that is not terminal and has tasks", False
+            elif column.is_terminal and column.tasks:
+                for task in column.tasks:
+                    session.delete(task)
+            session.delete(column)
+            session.commit()
+
+        return "Column deleted successfully", True
+
+    def session_get_column_by_id_for_owner(
+        self, 
+        session: SessionType,
+        column_id: str, 
+        user_id: str,
+        with_tasks: bool = False
+    ) -> Column:
+        # TODO: wait, instead of checking if user can make the changes like this maybe 
+        # I could do a joined query and use the user_id as a part of it?
+        options = [joinedload(self.model.board).joinedload(Board.organization)]
+        if with_tasks:
+            options.append(joinedload(self.model.tasks))
+
+        column = session.scalar(
+            select(self.model).options(*options).where(self.model.id == column_id)
+        )
+
+        if not column:
+            raise exception.ColumnNotFound
+
+        if not user_id == str(column.board.organization.owner_id):
+            raise exceptions.AuthorizationFailedException
+        
+        return column
+
 
 class TaskRepository(BaseRepository):
     model = Task

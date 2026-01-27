@@ -83,3 +83,15 @@ async def column_partial_update(
     user_service: UserService = Depends(UserService),
 ):
     return service.partial_update_column(payload, column_id, token, user_service)
+
+
+@router.delete("/column/{column_id}", tags=["columns"])
+async def column_delete(
+    column_id: str,
+    token: str = Depends(oauth2_scheme),
+    service: ColumnService = Depends(ColumnService),
+    user_service: UserService = Depends(UserService),
+):
+    message, deleted = service.delete_column(column_id, token, user_service)
+    status_code = status.HTTP_200_OK if deleted else status.HTTP_422_UNPROCESSABLE_CONTENT
+    return JSONResponse(status_code=status_code, content={"detail": message})
