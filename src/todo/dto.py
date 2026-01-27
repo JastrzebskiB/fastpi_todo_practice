@@ -82,9 +82,17 @@ class ColumnResponse(BaseModel):
 
 
 # Task
+class CreateTaskPayload(BaseModel):
+    name: str
+    description: str
+    order: int
+    assigned_to: UUID4 | None = None
+
+
 class TaskResponseFlat(BaseModel):
     id: UUID4
     column_id: UUID4
+    created_by: UUID4
     assigned_to: UUID4 | None
     name: str
     order: int

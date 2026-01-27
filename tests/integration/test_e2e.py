@@ -1038,6 +1038,7 @@ class TestOrganizationAccessRequestCreate:
         test_organization_access_request_service,
         test_organization_service,
         test_user_service,
+        test_organization_access_request_repository,
         test_organization,
         test_user,
     ):
@@ -1053,12 +1054,14 @@ class TestOrganizationAccessRequestCreate:
             headers=generate_auth_headers(test_user.email),
         )
         response_json = response.json()
+        count = test_organization_access_request_repository.get_count()
 
         assert response.status_code == HTTPStatus.OK
         assert response_json["requester_id"] == str(test_user.id)
         assert response_json["organization_id"] == str(test_organization.id)
         assert response_json["approved"] is None
         assert response_json["updated_at"] is not None
+        assert count == 1
 
     def test_fail_already_a_member(
         self,
@@ -1551,7 +1554,6 @@ class TestBoardCreate:
             json=payload,
         )
         response_json = response.json()
-
         board_count = test_board_repository.get_count()
 
         assert response.status_code == HTTPStatus.OK
@@ -2126,6 +2128,7 @@ class TestColumnCreate:
         test_column_service,
         test_board_service,
         test_user_service,
+        test_column_repository,
         test_organization,
     ):
         app.dependency_overrides[ColumnService] = lambda: test_column_service
@@ -2138,16 +2141,18 @@ class TestColumnCreate:
 
         response = client.post(
             f"/todo/board/{str(board.id)}/columns",
+            headers=generate_auth_headers(test_organization.owner.email),
             json=payload,
-            headers=generate_auth_headers(test_organization.owner.email)
         )
         response_json = response.json()
+        count = test_column_repository.get_count()
 
         assert response.status_code == HTTPStatus.OK
         assert response_json[0]["name"] == payload["name"]
         assert response_json[0]["board_id"] == str(board.id)
         assert response_json[0]["order"] == payload["order"]
         assert response_json[0]["is_terminal"] == payload["is_terminal"]
+        assert count == 1
 
     def test_fail_not_an_owner_of_organization(
         self,
@@ -2168,8 +2173,8 @@ class TestColumnCreate:
 
         response = client.post(
             f"/todo/board/{str(board.id)}/columns",
+            headers=generate_auth_headers(test_user.email),
             json=payload,
-            headers=generate_auth_headers(test_user.email)
         )
         response_json = response.json()
 
@@ -2195,8 +2200,8 @@ class TestColumnCreate:
 
         response = client.post(
             f"/todo/board/{str(board.id)}/columns",
+            headers=generate_auth_headers(test_organization.owner.email),
             json=payload,
-            headers=generate_auth_headers(test_organization.owner.email)
         )
         response_json = response.json()
 
@@ -2239,8 +2244,8 @@ class TestColumnUpdate:
 
         response = client.patch(
             f"/todo/column/{str(column.id)}",
-            json=payload.model_dump(),
             headers=generate_auth_headers(test_organization.owner.email),
+            json=payload.model_dump(),
         )
         response_json = response.json()
 
@@ -2270,8 +2275,8 @@ class TestColumnUpdate:
 
         response = client.patch(
             f"/todo/column/{str(column.id)}",
-            json={},
             headers=generate_auth_headers(test_organization.owner.email),
+            json={},
         )
         response_json = response.json()
 
@@ -2299,8 +2304,8 @@ class TestColumnUpdate:
 
         response = client.patch(
             f"/todo/column/{str(column.id)}",
-            json={"name": "New name"},
             headers=generate_auth_headers(test_user.email),
+            json={"name": "New name"},
         )
         response_json = response.json()
 
@@ -2326,7 +2331,7 @@ class TestColumnDelete:
 
         response = client.delete(
             f"/todo/column/{str(column.id)}",
-            headers=generate_auth_headers(test_organization.owner.email)
+            headers=generate_auth_headers(test_organization.owner.email),
         )
         response_json = response.json()
         count = test_column_repository.get_count()
@@ -2354,7 +2359,7 @@ class TestColumnDelete:
 
         response = client.delete(
             f"/todo/column/{str(column.id)}",
-            headers=generate_auth_headers(test_organization.owner.email)
+            headers=generate_auth_headers(test_organization.owner.email),
         )
         response_json = response.json()
         column_count = test_column_repository.get_count()
@@ -2384,7 +2389,7 @@ class TestColumnDelete:
 
         response = client.delete(
             f"/todo/column/{str(column.id)}",
-            headers=generate_auth_headers(test_organization.owner.email)
+            headers=generate_auth_headers(test_organization.owner.email),
         )
         response_json = response.json()
         column_count = test_column_repository.get_count()
@@ -2423,3 +2428,269 @@ class TestColumnDelete:
 
         assert response.status_code == HTTPStatus.FORBIDDEN
         assert response_json["detail"] == "You do not have the permission to perform this action"
+
+
+class TestTaskCreate:
+    def test_success_no_assignee_as_organization_owner(
+        self,
+        TestSession,
+        test_board_service,
+        test_column_service,
+        test_task_service,
+        test_user_service,
+        test_task_repository,
+        test_organization_with_members,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
+        app.dependency_overrides[TaskService] = lambda: test_task_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization_with_members.id))
+        column = create_test_column(TestSession, "Test Column", str(board.id), 0, False)
+        payload = {
+            "name": "Test Task",
+            "description": "Lorem ipsum dolor sit amet",
+            "order": 1337,
+        }
+
+        response = client.post(
+            f"/todo/board/{str(board.id)}/column/{str(column.id)}/tasks",
+            json=payload,
+            headers=generate_auth_headers(test_organization_with_members.owner.email),
+        )
+        response_json = response.json()
+        count = test_task_repository.get_count()
+
+        assert response.status_code == HTTPStatus.OK
+        assert response_json["column_id"] == str(column.id)
+        assert response_json["created_by"] == str(test_organization_with_members.owner.id)
+        assert response_json["assigned_to"] == None
+        assert response_json["name"] == payload["name"]
+        assert response_json["order"] == payload["order"]
+        assert count == 1
+
+    def test_success_with_assignee_as_organization_owner(
+        self,
+        TestSession,
+        test_board_service,
+        test_column_service,
+        test_task_service,
+        test_user_service,
+        test_task_repository,
+        test_organization_with_members,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
+        app.dependency_overrides[TaskService] = lambda: test_task_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization_with_members.id))
+        column = create_test_column(TestSession, "Test Column", str(board.id), 0, False)
+        payload = {
+            "assigned_to": str(test_organization_with_members.members[0].id),
+            "name": "Test Task",
+            "description": "Lorem ipsum dolor sit amet",
+            "order": 1337,
+        }
+
+        response = client.post(
+            f"/todo/board/{str(board.id)}/column/{str(column.id)}/tasks",
+            json=payload,
+            headers=generate_auth_headers(test_organization_with_members.owner.email),
+        )
+        response_json = response.json()
+        count = test_task_repository.get_count()
+
+        assert response.status_code == HTTPStatus.OK
+        assert response_json["column_id"] == str(column.id)
+        assert response_json["created_by"] == str(test_organization_with_members.owner.id)
+        assert response_json["assigned_to"] == payload["assigned_to"]
+        assert response_json["name"] == payload["name"]
+        assert response_json["order"] == payload["order"]
+        assert count == 1
+
+    def test_success_no_assignee_as_organization_member(
+        self,
+        TestSession,
+        test_board_service,
+        test_column_service,
+        test_task_service,
+        test_user_service,
+        test_task_repository,
+        test_organization_with_members,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
+        app.dependency_overrides[TaskService] = lambda: test_task_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization_with_members.id))
+        column = create_test_column(TestSession, "Test Column", str(board.id), 0, False)
+        payload = {
+            "name": "Test Task",
+            "description": "Lorem ipsum dolor sit amet",
+            "order": 1337,
+        }
+
+        response = client.post(
+            f"/todo/board/{str(board.id)}/column/{str(column.id)}/tasks",
+            json=payload,
+            headers=generate_auth_headers(test_organization_with_members.members[0].email),
+        )
+        response_json = response.json()
+        count = test_task_repository.get_count()
+
+        assert response.status_code == HTTPStatus.OK
+        assert response_json["column_id"] == str(column.id)
+        assert response_json["created_by"] == str(test_organization_with_members.members[0].id)
+        assert response_json["assigned_to"] == None
+        assert response_json["name"] == payload["name"]
+        assert response_json["order"] == payload["order"]
+        assert count == 1
+
+    def test_success_with_assignee_as_organization_member(
+        self,
+        TestSession,
+        test_board_service,
+        test_column_service,
+        test_task_service,
+        test_user_service,
+        test_task_repository,
+        test_organization_with_members,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
+        app.dependency_overrides[TaskService] = lambda: test_task_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization_with_members.id))
+        column = create_test_column(TestSession, "Test Column", str(board.id), 0, False)
+        payload = {
+            "assigned_to": str(test_organization_with_members.owner_id),
+            "name": "Test Task",
+            "description": "Lorem ipsum dolor sit amet",
+            "order": 1337,
+        }
+
+        response = client.post(
+            f"/todo/board/{str(board.id)}/column/{str(column.id)}/tasks",
+            json=payload,
+            headers=generate_auth_headers(test_organization_with_members.members[0].email),
+        )
+        response_json = response.json()
+        count = test_task_repository.get_count()
+
+        assert response.status_code == HTTPStatus.OK
+        assert response_json["column_id"] == str(column.id)
+        assert response_json["created_by"] == str(test_organization_with_members.members[0].id)
+        assert response_json["assigned_to"] == payload["assigned_to"]
+        assert response_json["name"] == payload["name"]
+        assert response_json["order"] == payload["order"]
+        assert count == 1
+
+    def test_fail_creator_has_no_access_to_board(
+        self,
+        TestSession,
+        test_board_service,
+        test_column_service,
+        test_task_service,
+        test_user_service,
+        test_organization_with_members,
+        test_user,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
+        app.dependency_overrides[TaskService] = lambda: test_task_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization_with_members.id))
+        column = create_test_column(TestSession, "Test Column", str(board.id), 0, False)
+        payload = {
+            "name": "Test Task",
+            "description": "Lorem ipsum dolor sit amet",
+            "order": 1337,
+        }
+
+        response = client.post(
+            f"/todo/board/{str(board.id)}/column/{str(column.id)}/tasks",
+            json=payload,
+            headers=generate_auth_headers(test_user.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.FORBIDDEN
+        assert response_json["detail"] == "You do not have the permission to perform this action"
+
+    def test_fail_assignee_has_no_access_to_board(
+        self,
+        TestSession,
+        test_board_service,
+        test_column_service,
+        test_task_service,
+        test_user_service,
+        test_organization_with_members,
+        test_user,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
+        app.dependency_overrides[TaskService] = lambda: test_task_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization_with_members.id))
+        column = create_test_column(TestSession, "Test Column", str(board.id), 0, False)
+        payload = {
+            "assigned_to": str(test_user.id),
+            "name": "Test Task",
+            "description": "Lorem ipsum dolor sit amet",
+            "order": 1337,
+        }
+
+        response = client.post(
+            f"/todo/board/{str(board.id)}/column/{str(column.id)}/tasks",
+            json=payload,
+            headers=generate_auth_headers(test_organization_with_members.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.FORBIDDEN
+        assert response_json["detail"] == "You do not have the permission to perform this action"
+
+    def test_fail_column_doesnt_exist(
+        self,
+        TestSession,
+        test_board_service,
+        test_column_service,
+        test_task_service,
+        test_user_service,
+        test_organization_with_members,
+    ):
+        app.dependency_overrides[BoardService] = lambda: test_board_service
+        app.dependency_overrides[ColumnService] = lambda: test_column_service
+        app.dependency_overrides[TaskService] = lambda: test_task_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization_with_members.id))
+        column_id = "e6358d05-f648-4bc4-a251-08b087c801e8"
+        payload = {
+            "name": "Test Task",
+            "description": "Lorem ipsum dolor sit amet",
+            "order": 1337,
+        }
+
+        response = client.post(
+            f"/todo/board/{str(board.id)}/column/{column_id}/tasks",
+            json=payload,
+            headers=generate_auth_headers(test_organization_with_members.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.NOT_FOUND
+        assert response_json["detail"] == "Column not found"

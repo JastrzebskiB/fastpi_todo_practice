@@ -34,6 +34,11 @@ class BoardRepository(BaseRepository):
             board = self.session_get_board_by_id(session, board_id)
             return user_id == str(board.organization.owner_id)
 
+    def check_user_id_has_access_to_board_id(self, user_id: str, board_id: str) -> bool:
+        with self.sessionmaker() as session:
+            board = self.session_get_board_by_id(session, board_id)
+            return user_id == str(board.organization.owner_id)
+
     def list_boards_for_organization(self, organization_id: str) -> list[Board]:
         with self.sessionmaker() as session:
             return session.scalars(

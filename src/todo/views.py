@@ -3,7 +3,12 @@ from fastapi.responses import JSONResponse
 
 from ..auth.services import UserService, OrganizationService
 from ..core.auth import oauth2_scheme
-from .dto import CreateBoardPayload, CreateColumnPayload, PartialUpdateColumnPayload
+from .dto import (
+    CreateBoardPayload, 
+    CreateColumnPayload, 
+    CreateTaskPayload, 
+    PartialUpdateColumnPayload,
+)
 from .services import BoardService, ColumnService, TaskService
 
 router = APIRouter(prefix="/todo", tags=["todo"])
@@ -95,3 +100,20 @@ async def column_delete(
     message, deleted = service.delete_column(column_id, token, user_service)
     status_code = status.HTTP_200_OK if deleted else status.HTTP_422_UNPROCESSABLE_CONTENT
     return JSONResponse(status_code=status_code, content={"detail": message})
+
+
+# Tasks
+@router.post("/board/{board_id}/column/{column_id}/tasks", tags=["tasks"])
+async def task_create(
+    payload: CreateTaskPayload,
+    board_id: str,
+    column_id: str,
+    token: str = Depends(oauth2_scheme),
+    service: TaskService = Depends(TaskService),
+    board_service: BoardService = Depends(BoardService),
+    column_service: ColumnService = Depends(ColumnService),
+    user_service: UserService = Depends(UserService),
+): 
+    return service.create_task_in_column(
+        payload, board_id, column_id, token, board_service, column_service, user_service,
+    )

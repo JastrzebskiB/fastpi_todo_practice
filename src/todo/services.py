@@ -3,7 +3,7 @@ from fastapi.params import Depends as DependsType
 
 from ..auth.services import OrganizationService, UserService
 from ..core import settings
-from ..core.exceptions import AuthorizationFailedException, ValidationException
+from ..core.exceptions import AuthorizationFailedException, ColumnNotFound, ValidationException
 from .constants import DEFAULT_COLUMNS
 from .dto import (
     BoardResponse,
@@ -11,6 +11,7 @@ from .dto import (
     BoardResponseFullDetails,
     CreateBoardPayload,
     CreateColumnPayload,
+    CreateTaskPayload,
     ColumnResponseFlat,
     ColumnResponse,
     PartialUpdateColumnPayload,
@@ -127,6 +128,12 @@ class BoardService:
         if not self.repository.check_user_id_owns_board_id(user_id, board_id):
             raise AuthorizationFailedException
 
+    def validate_user_has_access_to_board(self, user_id, board_id) -> None:
+        # TODO: I REALLY need to think about how to unify the queries like these and exceptions
+        # raised
+        # Raises AuthorizationFailedException
+        self.repository.get_board_by_id_as_user(board_id, user_id)
+
     # Serialization
     def create_board_response_flat(self, board: Board) -> BoardResponseFlat:
         return BoardResponseFlat(id=board.id,name=board.name,organization_id=board.organization_id)
@@ -216,6 +223,7 @@ class ColumnService:
         return self.repository.delete_column(column_id, my_id)
 
     # Domain object manipulation
+    # TODO: Unnecessary, remove this
     def create_domain_column_instances_for_board_id(
         self, 
         board_id: str, 
@@ -227,9 +235,9 @@ class ColumnService:
 
     def create_domain_column_instance(self, board_id: str, payload: CreateColumnPayload) -> Column:
         return Column(
+            board_id=board_id, 
             name=payload.name, 
             order=payload.order, 
-            board_id=board_id, 
             is_terminal=payload.is_terminal,
         )
 
@@ -237,6 +245,10 @@ class ColumnService:
     def validate_column_name_unique_in_board(self, name: str, board_id: str) -> None:
         if not self.repository.check_name_unique_in_board(name, board_id):
             raise ValidationException(f"Column named {name} already exists for this board")
+
+    def validate_column_exists(self, column_id: str) -> None:
+        if not self.repository.get_by_id(column_id):
+            raise ColumnNotFound
 
     # Serialization
     def create_column_response_flat(self, column: Column) -> ColumnResponseFlat:
@@ -269,11 +281,47 @@ class TaskService:
             repository = repository.dependency()
         self.repository = repository
 
+    def create_task_in_column(
+        self,
+        payload: CreateTaskPayload,
+        board_id: str,
+        column_id: str, 
+        token: str,
+        board_service: BoardService,
+        column_service: ColumnService,
+        user_service: UserService,
+    ) -> TaskResponseFlat:
+        my_id = str(user_service.get_current_user(token).id)
+        board_service.validate_user_has_access_to_board(my_id, board_id)
+        if payload.assigned_to:
+            board_service.validate_user_has_access_to_board(str(payload.assigned_to), board_id)
+        column_service.validate_column_exists(column_id)
+
+        task = self.create_domain_task_instance(column_id, my_id, payload)
+        return self.create_task_response_flat(self.repository.create(task))
+
+    # Domain object manipulation
+    def create_domain_task_instance(
+        self, 
+        column_id: str, 
+        created_by: str, 
+        payload: CreateTaskPayload,
+    ) -> Task:
+        return Task(
+            column_id=column_id, 
+            created_by=created_by,
+            assigned_to=payload.assigned_to,
+            name=payload.name, 
+            description=payload.description,
+            order=payload.order, 
+        )
+
     # Serialization
     def create_task_response_flat(self, task: Task) -> TaskResponseFlat:
         return TaskResponseFlat(
             id=task.id,
             column_id=task.column_id,
+            created_by=task.created_by,
             assigned_to=task.assigned_to,
             name=task.name,
             order=task.order,
