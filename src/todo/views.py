@@ -8,6 +8,7 @@ from .dto import (
     CreateColumnPayload, 
     CreateTaskPayload, 
     PartialUpdateColumnPayload,
+    PartialUpdateTaskPayload,
 )
 from .services import BoardService, ColumnService, TaskService
 
@@ -117,3 +118,14 @@ async def task_create(
     return service.create_task_in_column(
         payload, board_id, column_id, token, board_service, column_service, user_service,
     )
+
+
+@router.patch("/tasks/{task_id}")
+async def task_partial_update(
+    payload: PartialUpdateTaskPayload,
+    task_id: str,
+    token: str = Depends(oauth2_scheme),
+    service: TaskService = Depends(TaskService),
+    user_service: UserService = Depends(UserService),
+):
+    return service.partial_update_task(payload, task_id, token, user_service)

@@ -110,6 +110,9 @@ class ColumnRepository(BaseRepository):
                 .select()
             )
 
+    def user_has_access_to_column(self, user_id: str, column: Column) -> bool:
+        return user_id in [str(member.id) for member in column.board.organization.members] 
+
     def partial_update_column(
         self, 
         column_id: str,
@@ -178,3 +181,85 @@ class ColumnRepository(BaseRepository):
 
 class TaskRepository(BaseRepository):
     model = Task
+
+    def check_user_has_access_to_task(self, user_id: str, task_id: str) -> bool:
+        with self.sessionmaker() as session:
+            task = self.session_get_task_with_organization_members(session, task_id)
+            return self.user_has_access_to_task(user_id, task)
+
+    def session_get_task_with_organization_members(
+        self, 
+        session: SessionType, 
+        task_id: str,
+    ) -> Task:
+        from src.auth.models import Organization
+
+        task = session.scalar(
+            select(self.model)
+            .options(
+                joinedload(self.model.column)
+                .joinedload(Column.board)
+                .joinedload(Board.organization)
+                .joinedload(Organization.members)
+            )
+            .where(self.model.id == task_id)
+        )
+
+        if not task:
+            raise exceptions.TaskNotFound
+        return task
+
+    def user_has_access_to_task(
+        self, 
+        user_id: str, 
+        task: Task,
+    ) -> bool:
+        return user_id in [str(member.id) for member in task.column.board.organization.members]
+
+    def partial_update_task(
+        self, 
+        task_id: str,
+        column_id: str | None,
+        created_by: str | None,
+        assigned_to: str | None,
+        name: str | None,
+        description: str | None,
+        order: int | None,
+    ) -> Task:
+        column_repository = ColumnRepository()
+
+        with self.sessionmaker() as session:
+            task = self.session_get_task_with_organization_members(session, task_id)
+
+            if column_id is not None:
+                task.column_id = column_id
+            if created_by is not None:
+                created_by = str(created_by)
+                if not self.user_has_access_to_task(created_by, task):
+                    raise exceptions.AuthorizationFailedException
+                if column_id is not None and not column_repository.user_has_access_to_column(
+                    created_by, task.column,
+                ):
+                    raise exceptions.AuthorizationFailedException
+                task.created_by = created_by
+            if assigned_to is not None:
+                assigned_to = str(assigned_to)
+                if not self.user_has_access_to_task(assigned_to, task):
+                    raise exceptions.AuthorizationFailedException
+                if column_id is not None and not column_repository.user_has_access_to_column(
+                    assigned_to, task.column,
+                ):
+                    raise exceptions.AuthorizationFailedException
+                task.assigned_to = assigned_to
+            if name is not None:
+                task.name = name
+            if description is not None:
+                task.description = description
+            if order is not None:
+                task.order = order
+
+            session.add(task)
+            session.commit()
+            session.refresh(task)
+        
+        return task

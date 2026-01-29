@@ -15,6 +15,7 @@ from .dto import (
     ColumnResponseFlat,
     ColumnResponse,
     PartialUpdateColumnPayload,
+    TaskResponse,
     TaskResponseFlat,
 )
 from .models import Board, Column, Task
@@ -300,6 +301,27 @@ class TaskService:
         task = self.create_domain_task_instance(column_id, my_id, payload)
         return self.create_task_response_flat(self.repository.create(task))
 
+    def partial_update_task(
+        self,
+        payload: PartialUpdateColumnPayload,
+        task_id: str,
+        token: str,
+        user_service: UserService,
+    ):
+        my_id = str(user_service.get_current_user(token).id)
+        self.validate_user_has_access_to_task(my_id, task_id)
+        return self.create_task_response( 
+            self.repository.partial_update_task(
+                task_id=task_id,
+                column_id=payload.column_id,
+                created_by=payload.created_by,
+                assigned_to=payload.assigned_to,
+                name=payload.name,
+                description=payload.description,
+                order=payload.order,
+            )
+        )
+
     # Domain object manipulation
     def create_domain_task_instance(
         self, 
@@ -316,6 +338,11 @@ class TaskService:
             order=payload.order, 
         )
 
+    # Validation
+    def validate_user_has_access_to_task(self, user_id: str, task_id: str) -> None:
+        if not self.repository.check_user_has_access_to_task(user_id, task_id):
+            raise AuthorizationFailedException
+
     # Serialization
     def create_task_response_flat(self, task: Task) -> TaskResponseFlat:
         return TaskResponseFlat(
@@ -325,4 +352,15 @@ class TaskService:
             assigned_to=task.assigned_to,
             name=task.name,
             order=task.order,
+        )
+
+    def create_task_response(self, task: Task) -> TaskResponse:
+        return TaskResponse(
+            id=task.id,
+            column_id=task.column_id,
+            created_by=task.created_by,
+            assigned_to=task.assigned_to,
+            name=task.name,
+            order=task.order,
+            description=task.description,
         )

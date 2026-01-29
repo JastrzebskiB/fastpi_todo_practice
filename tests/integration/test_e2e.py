@@ -2694,3 +2694,277 @@ class TestTaskCreate:
 
         assert response.status_code == HTTPStatus.NOT_FOUND
         assert response_json["detail"] == "Column not found"
+
+
+class TestTaskPartialUpdate:
+    # 6! is 720, we won't parameterize all of the options - only "special" and "expected" cases
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {
+                "column_id": True, 
+                "created_by": True, 
+                "assigned_to": True, 
+                "name": "New name", 
+                "description": "New description",
+                "order": 1337
+            },
+            {"column_id": True, "created_by": True, "order": 1337},
+            {"column_id": True, "assigned_to": True, "order": 1337},
+            {"column_id": True, "created_by": True, "assigned_to": True, "order": 1337},
+            {"name": "New name",  "description": "New description"},
+            {"column_id": True, "order": 1337},
+            {"order": 1337},
+        ]
+    )
+    def test_success(
+        self,
+        TestSession,
+        test_task_service,
+        test_user_service,
+        test_organization_with_members,
+        payload,
+    ):
+        app.dependency_overrides[TaskService] = lambda: test_task_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization_with_members.id))
+        column_1 = create_test_column(TestSession, "TODO", str(board.id), 0, False)
+        column_2 = create_test_column(TestSession, "Done", str(board.id), 1, True)
+        task = create_test_task(
+            TestSession, 
+            name="Old name", 
+            column_id=str(column_1.id), 
+            created_by=str(test_organization_with_members.owner_id),
+            assigned_to=None,
+            order=0,
+            description="Old description",
+        )
+
+        if "column_id" in payload:
+            payload["column_id"] = str(column_2.id)
+        if "created_by" in payload:
+            payload["created_by"] = str(test_organization_with_members.members[0].id)
+        if "assigned_to" in payload:
+            payload["assigned_to"] = str(test_organization_with_members.members[0].id)
+
+        response = client.patch(
+            f"/todo/tasks/{str(task.id)}",
+            json=payload,
+            headers=generate_auth_headers(test_organization_with_members.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert response_json["id"] == str(task.id)
+        if "column_id" in payload:
+            assert response_json["column_id"] == payload["column_id"]
+        else:
+            assert response_json["column_id"] == str(task.column_id)
+        if "created_by" in payload:
+            assert response_json["created_by"] == payload["created_by"]
+        else:
+            assert response_json["created_by"] == str(task.created_by)
+        if "assigned_to" in payload:
+            assert response_json["assigned_to"] == payload["assigned_to"]
+        else:
+            assert response_json["assigned_to"] == task.assigned_to
+        if "name" in payload:
+            assert response_json["name"] == payload["name"]
+        else:
+            assert response_json["name"] == task.name
+        if "description" in payload: 
+            assert response_json["description"] == payload["description"]
+        else:
+            assert response_json["description"] == task.description
+        if "order" in payload: 
+            assert response_json["order"] == payload["order"]
+        else:
+            assert response_json["order"] == task.order
+
+    def test_fail_empty_payload(
+        self,
+        TestSession,
+        test_task_service,
+        test_user_service,
+        test_organization_with_members,
+    ):
+        app.dependency_overrides[TaskService] = lambda: test_task_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization_with_members.id))
+        column_1 = create_test_column(TestSession, "TODO", str(board.id), 0, False)
+        column_2 = create_test_column(TestSession, "Done", str(board.id), 1, True)
+        task = create_test_task(
+            TestSession, 
+            name="Old name", 
+            column_id=str(column_1.id), 
+            created_by=str(test_organization_with_members.owner_id),
+            assigned_to=None,
+            order=0,
+            description="Old description",
+        )
+
+
+        response = client.patch(
+            f"/todo/tasks/{str(task.id)}",
+            json={},
+            headers=generate_auth_headers(test_organization_with_members.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.UNPROCESSABLE_CONTENT
+        assert response_json["detail"] == (
+            "At least one of ['column_id', 'created_by', 'assigned_to', 'name', 'description', "
+            "'order'] needs to be present"
+        )
+
+    def test_fail_new_created_by_not_a_member_of_organization(
+        self,
+        TestSession,
+        test_task_service,
+        test_user_service,
+        test_organization_with_members,
+        test_user,
+    ):
+        app.dependency_overrides[TaskService] = lambda: test_task_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization_with_members.id))
+        column_1 = create_test_column(TestSession, "TODO", str(board.id), 0, False)
+        column_2 = create_test_column(TestSession, "Done", str(board.id), 1, True)
+        task = create_test_task(
+            TestSession, 
+            name="Old name", 
+            column_id=str(column_1.id), 
+            created_by=str(test_organization_with_members.owner_id),
+            assigned_to=None,
+            order=0,
+            description="Old description",
+        )
+
+        payload = {"created_by": str(test_user.id)}
+
+        response = client.patch(
+            f"/todo/tasks/{str(task.id)}",
+            json=payload,
+            headers=generate_auth_headers(test_organization_with_members.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.FORBIDDEN
+        assert response_json["detail"] == "You do not have the permission to perform this action"
+
+    def test_fail_new_assigned_to_not_a_member_of_organization(
+        self,
+        TestSession,
+        test_task_service,
+        test_user_service,
+        test_organization_with_members,
+        test_user,
+    ):
+        app.dependency_overrides[TaskService] = lambda: test_task_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization_with_members.id))
+        column_1 = create_test_column(TestSession, "TODO", str(board.id), 0, False)
+        column_2 = create_test_column(TestSession, "Done", str(board.id), 1, True)
+        task = create_test_task(
+            TestSession, 
+            name="Old name", 
+            column_id=str(column_1.id), 
+            created_by=str(test_organization_with_members.owner_id),
+            assigned_to=None,
+            order=0,
+            description="Old description",
+        )
+
+        payload = {"assigned_to": str(test_user.id)}
+
+        response = client.patch(
+            f"/todo/tasks/{str(task.id)}",
+            json=payload,
+            headers=generate_auth_headers(test_organization_with_members.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.FORBIDDEN
+        assert response_json["detail"] == "You do not have the permission to perform this action"
+
+    def test_fail_new_created_by_and_assigned_to_not_members_of_organization(
+        self,
+        TestSession,
+        test_task_service,
+        test_user_service,
+        test_organization_with_members,
+        test_user,
+    ):
+        app.dependency_overrides[TaskService] = lambda: test_task_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization_with_members.id))
+        column_1 = create_test_column(TestSession, "TODO", str(board.id), 0, False)
+        column_2 = create_test_column(TestSession, "Done", str(board.id), 1, True)
+        task = create_test_task(
+            TestSession, 
+            name="Old name", 
+            column_id=str(column_1.id), 
+            created_by=str(test_organization_with_members.owner_id),
+            assigned_to=None,
+            order=0,
+            description="Old description",
+        )
+
+        payload = {"created_by": str(test_user.id), "assigned_to": str(test_user.id)}
+
+        response = client.patch(
+            f"/todo/tasks/{str(task.id)}",
+            json=payload,
+            headers=generate_auth_headers(test_organization_with_members.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.FORBIDDEN
+        assert response_json["detail"] == "You do not have the permission to perform this action"
+
+    def test_fail_not_a_member_of_organization(
+        self,
+        TestSession,
+        test_task_service,
+        test_user_service,
+        test_organization_with_members,
+        test_user,
+    ):
+        app.dependency_overrides[TaskService] = lambda: test_task_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization_with_members.id))
+        column_1 = create_test_column(TestSession, "TODO", str(board.id), 0, False)
+        column_2 = create_test_column(TestSession, "Done", str(board.id), 1, True)
+        task = create_test_task(
+            TestSession, 
+            name="Old name", 
+            column_id=str(column_1.id), 
+            created_by=str(test_organization_with_members.owner_id),
+            assigned_to=None,
+            order=0,
+            description="Old description",
+        )
+
+        payload = {"created_by": str(test_user.id), "assigned_to": str(test_user.id)}
+
+        response = client.patch(
+            f"/todo/tasks/{str(task.id)}",
+            json=payload,
+            headers=generate_auth_headers(test_user.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.FORBIDDEN
+        assert response_json["detail"] == "You do not have the permission to perform this action"

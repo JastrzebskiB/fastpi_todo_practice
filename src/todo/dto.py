@@ -52,15 +52,11 @@ class PartialUpdateColumnPayload(BaseModel):
     @classmethod
     def validate_at_least_one_field_present(cls, data: Any) -> Any:
         fields = ["name", "order", "is_terminal"]
-        at_least_one_data_present = False
         for field in fields:
             if data.get(field) is not None:
-                at_least_one_data_present = True
+                return data
         
-        if not at_least_one_data_present:
-            raise exceptions.ValidationException(f"At least one of {fields} needs to be present")
-
-        return data
+        raise exceptions.ValidationException(f"At least one of {fields} needs to be present")
 
 
 class ColumnResponseFlat(BaseModel):
@@ -83,10 +79,29 @@ class ColumnResponse(BaseModel):
 
 # Task
 class CreateTaskPayload(BaseModel):
+    assigned_to: UUID4 | None = None
     name: str
     description: str
     order: int
+
+
+class PartialUpdateTaskPayload(BaseModel):
+    column_id: UUID4 | None = None
+    created_by: UUID4 | None = None
     assigned_to: UUID4 | None = None
+    name: str | None = None
+    description: str | None = None
+    order: int | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_at_least_one_field_present(cls, data: Any) -> Any:
+        fields = ["column_id", "created_by", "assigned_to", "name", "description", "order"]
+        for field in fields:
+            if data.get(field) is not None:
+                return data
+        
+        raise exceptions.ValidationException(f"At least one of {fields} needs to be present")
 
 
 class TaskResponseFlat(BaseModel):
@@ -95,4 +110,14 @@ class TaskResponseFlat(BaseModel):
     created_by: UUID4
     assigned_to: UUID4 | None
     name: str
+    order: int
+
+
+class TaskResponse(BaseModel):
+    id: UUID4
+    column_id: UUID4
+    created_by: UUID4
+    assigned_to: UUID4 | None
+    name: str
+    description: str
     order: int
