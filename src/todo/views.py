@@ -129,3 +129,15 @@ async def task_partial_update(
     user_service: UserService = Depends(UserService),
 ):
     return service.partial_update_task(payload, task_id, token, user_service)
+
+
+@router.delete("/tasks/{task_id}")
+async def task_delete(
+    task_id: str,
+    token: str = Depends(oauth2_scheme),
+    service: TaskService = Depends(TaskService),
+    user_service: UserService = Depends(UserService),
+):
+    message, deleted = service.delete_task(task_id, token, user_service)
+    status_code = status.HTTP_200_OK if deleted else status.HTTP_422_UNPROCESSABLE_CONTENT
+    return JSONResponse(status_code=status_code, content={"detail": message})

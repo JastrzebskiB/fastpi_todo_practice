@@ -209,6 +209,9 @@ class TaskRepository(BaseRepository):
             raise exceptions.TaskNotFound
         return task
 
+    def session_get_task(self, session: SessionType, task_id: str) -> Task:
+        return session.scalar(select(self.model).where(self.model.id == task_id))
+
     def user_has_access_to_task(
         self, 
         user_id: str, 
@@ -263,3 +266,11 @@ class TaskRepository(BaseRepository):
             session.refresh(task)
         
         return task
+
+    def delete_task(self, task_id: str) -> tuple[str, bool]:
+        with self.sessionmaker() as session:
+            task = self.session_get_task(session, task_id)
+            session.delete(task)
+            session.commit()
+
+        return "Task deleted successfully", True

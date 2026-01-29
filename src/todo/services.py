@@ -322,6 +322,11 @@ class TaskService:
             )
         )
 
+    def delete_task(self, task_id: str, token: str, user_service: UserService) -> tuple[str, bool]:
+        my_id = str(user_service.get_current_user(token).id)
+        self.validate_user_has_access_to_task(my_id, task_id)
+        return self.repository.delete_task(task_id)
+
     # Domain object manipulation
     def create_domain_task_instance(
         self, 

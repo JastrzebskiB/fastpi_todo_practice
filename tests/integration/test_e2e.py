@@ -2968,3 +2968,70 @@ class TestTaskPartialUpdate:
 
         assert response.status_code == HTTPStatus.FORBIDDEN
         assert response_json["detail"] == "You do not have the permission to perform this action"
+
+
+class TestTaskDelete:
+    def test_success(
+        self,
+        TestSession,
+        test_task_service,
+        test_user_service,
+        test_organization_with_members,
+    ):
+        app.dependency_overrides[TaskService] = lambda: test_task_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization_with_members.id))
+        column = create_test_column(TestSession, "TODO", str(board.id), 0, False)
+        task = create_test_task(
+            TestSession, 
+            name="Old name", 
+            column_id=str(column.id), 
+            created_by=str(test_organization_with_members.owner_id),
+            assigned_to=None,
+            order=0,
+            description="Old description",
+        )
+
+        response = client.delete(
+            f"/todo/tasks/{str(task.id)}",
+            headers=generate_auth_headers(test_organization_with_members.owner.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.OK
+        assert response_json["detail"] == "Task deleted successfully"
+
+    def test_fail_not_a_member_of_organization(
+        self,
+        TestSession,
+        test_task_service,
+        test_user_service,
+        test_organization_with_members,
+        test_user,
+    ):
+        app.dependency_overrides[TaskService] = lambda: test_task_service
+        app.dependency_overrides[UserService] = lambda: test_user_service
+        client = TestClient(app)
+
+        board = create_test_board(TestSession, "Test Board", str(test_organization_with_members.id))
+        column = create_test_column(TestSession, "TODO", str(board.id), 0, False)
+        task = create_test_task(
+            TestSession, 
+            name="Old name", 
+            column_id=str(column.id), 
+            created_by=str(test_organization_with_members.owner_id),
+            assigned_to=None,
+            order=0,
+            description="Old description",
+        )
+
+        response = client.delete(
+            f"/todo/tasks/{str(task.id)}",
+            headers=generate_auth_headers(test_user.email),
+        )
+        response_json = response.json()
+
+        assert response.status_code == HTTPStatus.FORBIDDEN
+        assert response_json["detail"] == "You do not have the permission to perform this action"
